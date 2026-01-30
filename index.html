@@ -2,35 +2,53 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloud Tennis AI: Final Debug Mode</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tennis AI Pro: Rear Camera Edition</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #121212; color: white; padding: 20px; }
-        .container { position: relative; width: 640px; height: 480px; border: 2px solid #39ff14; border-radius: 8px; overflow: hidden; }
-        video { background: #000; width: 640px; height: 480px; display: block; }
-        canvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 100; width: 640px; height: 480px; }
-        .status { margin: 15px 0; padding: 12px; border-radius: 5px; background: #1e1e1e; color: #39ff14; font-family: monospace; width: 614px; text-align: center; border: 1px solid #444; }
-        .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
-        button { background: #333; color: white; border: 1px solid #555; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { background: #444; border-color: #39ff14; }
-        .btn-download { background: #2f3542; color: #70a1ff; border-color: #70a1ff; }
+        body { 
+            font-family: -apple-system, sans-serif; margin: 0; padding: 0;
+            display: flex; flex-direction: column; align-items: center; 
+            background: #000; color: white; overflow: hidden;
+        }
+        .container { 
+            position: relative; width: 100vw; height: 75vw; 
+            max-height: 80vh; background: #111; 
+        }
+        video, canvas { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            object-fit: contain; 
+        }
+        canvas { z-index: 100; pointer-events: none; }
+        video { z-index: 10; transition: opacity 0.3s; }
+        
+        .status { 
+            width: 90%; padding: 12px; margin: 10px 0;
+            background: #1e1e1e; color: #39ff14; 
+            font-family: monospace; font-size: 0.85em; 
+            text-align: center; border: 1px solid #333; border-radius: 8px;
+        }
+        .controls { display: flex; gap: 8px; padding: 10px; z-index: 200; flex-wrap: wrap; justify-content: center; }
+        button { 
+            background: #222; color: white; border: 1px solid #444; 
+            padding: 12px 15px; border-radius: 6px; font-weight: bold; font-size: 0.8em;
+        }
         .btn-freeze { background: #ff4757; border: none; }
+        .x-ray-active { opacity: 0.15; }
     </style>
 </head>
 <body>
-    <h1>TennisAI: Pro Edition</h1>
-    
-    <div class="controls">
-        <button onclick="testCircle()">1. Test Circle (Orange)</button>
-        <button class="btn-freeze" id="freezeBtn" onclick="toggleFreeze()">2. Freeze Video: OFF</button>
-        <button class="btn-download" onclick="downloadSnapshot()">3. Download AI View</button>
-    </div>
-
-    <div class="status" id="status">Syncing with Cloud...</div>
+    <div class="status" id="status">System Starting... Use Landscape Mode</div>
     
     <div class="container">
-        <video id="video" width="640" height="480" autoplay playsinline></video>
-        <canvas id="overlay" width="640" height="480"></canvas>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="controls">
+        <button onclick="toggleXRay()">Toggle X-Ray</button>
+        <button class="btn-freeze" id="freezeBtn" onclick="toggleFreeze()">Freeze Video: OFF</button>
+        <button onclick="testCircle()">Draw Test Circle</button>
+        <button style="background:#2ed573; border:none;" onclick="location.reload()">Reset App</button>
     </div>
 
     <script>
@@ -41,7 +59,10 @@
         let isFrozen = false;
         let lastCapturedImage = null;
 
+        // --- ACTIVEPIECES CONFIG ---
         const CLOUD_URL = 'https://cloud.activepieces.com/api/v1/webhooks/hHbFEj7bHgb0h2AEBzOs1/sync'; 
+
+        function toggleXRay() { video.classList.toggle('x-ray-active'); }
 
         function toggleFreeze() {
             isFrozen = !isFrozen;
@@ -50,50 +71,48 @@
             else { video.play(); btn.innerText = "Freeze Video: OFF"; btn.style.background = "#ff4757"; }
         }
 
-        // Diagnostic to prove drawing works
         function testCircle() {
             ctx.clearRect(0, 0, overlay.width, overlay.height);
-            drawNeonCircle(100, 100, "#ff9f43"); // Orange test circle
-            status.innerText = "Test: Drawing circle at 100, 100";
+            drawNeonCircle(overlay.width / 2, overlay.height / 2, "#ff00ff");
+            status.innerText = "Diagnostic: Drawing Center Circle";
         }
 
-        // Downloads the enhanced image Gemini actually sees
-        function downloadSnapshot() {
-            if (!lastCapturedImage) return alert("Wait for one AI cycle first!");
-            const link = document.createElement('a');
-            link.download = 'ai-vision-snapshot.jpg';
-            link.href = lastCapturedImage;
-            link.click();
-        }
-
-        async function setupCamera() {
+        async function initCamera() {
             try {
+                // 'environment' forces REAR camera
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480 }, audio: false 
+                    video: { facingMode: "environment", width: 640, height: 480 }, 
+                    audio: false 
                 });
                 video.srcObject = stream;
-                return new Promise((resolve) => video.onloadedmetadata = () => resolve());
+                
+                video.onloadedmetadata = () => {
+                    overlay.width = video.videoWidth;
+                    overlay.height = video.videoHeight;
+                    sendToCloud();
+                };
             } catch (err) {
-                status.innerText = "Error: Camera access denied.";
+                status.innerText = "Camera Error: Ensure HTTPS or use front camera.";
+                console.error(err);
             }
         }
 
         async function sendToCloud() {
             if (isFrozen && lastCapturedImage) {
-                // If frozen, keep sending the same image for testing
+                // Use the frozen frame for the AI
             } else {
                 const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = 640;
-                tempCanvas.height = 480;
+                tempCanvas.width = video.videoWidth;
+                tempCanvas.height = video.videoHeight;
                 const tempCtx = tempCanvas.getContext('2d');
-
-                // ENHANCED VISION: Apply brightness/contrast before sending
-                tempCtx.filter = "brightness(1.5) contrast(1.2) saturate(1.2)";
-                tempCtx.drawImage(video, 0, 0, 640, 480);
+                
+                // AUTO-BRIGHTNESS: Pre-processing for low-light
+                tempCtx.filter = "brightness(1.5) contrast(1.2)";
+                tempCtx.drawImage(video, 0, 0);
                 lastCapturedImage = tempCanvas.toDataURL('image/jpeg', 0.8);
             }
 
-            status.innerText = "AI Analyzing Frame...";
+            status.innerText = "AI Analyzing Rear View...";
 
             try {
                 const response = await fetch(CLOUD_URL, {
@@ -103,43 +122,44 @@
                 });
 
                 const data = await response.json();
-                console.log("Cloud Response:", data);
+                console.log("Cloud Data:", data);
                 
                 ctx.clearRect(0, 0, overlay.width, overlay.height);
                 if (data.ball_found) {
-                    // SCALE 0-1000 to Screen Pixels (640x480)
+                    // SCALE 0-1000 to Screen Pixels
                     const x = (data.ball_position.x / 1000) * overlay.width;
                     const y = (data.ball_position.y / 1000) * overlay.height;
-                    
                     drawNeonCircle(x, y, "#39ff14");
-                    status.innerText = `BALL TRACKED: X=${Math.round(x)} Y=${Math.round(y)}`;
+                    status.innerText = `BALL FOUND: X=${Math.round(x)} Y=${Math.round(y)}`;
                 } else {
                     status.innerText = "Searching for Ball...";
                 }
-            } catch (err) {
-                status.innerText = "Cloud Latency. Retrying...";
+            } catch (e) {
+                status.innerText = "Cloud Sync Error. Checking internet...";
             }
+            
+            // Wait 3 seconds to save data/credits
             setTimeout(sendToCloud, 3000);
         }
 
         function drawNeonCircle(x, y, color) {
             ctx.beginPath();
-            ctx.arc(x, y, 30, 0, 2 * Math.PI);
-            ctx.strokeStyle = color; 
-            ctx.lineWidth = 6;
+            ctx.arc(x, y, 40, 0, 2 * Math.PI); // Large 40px radius
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 8;
             ctx.shadowBlur = 20;
             ctx.shadowColor = color;
             ctx.stroke();
             
             ctx.beginPath(); // Crosshair
-            ctx.moveTo(x - 15, y); ctx.lineTo(x + 15, y);
-            ctx.moveTo(x, y - 15); ctx.lineTo(x, y + 15);
+            ctx.moveTo(x - 20, y); ctx.lineTo(x + 20, y);
+            ctx.moveTo(x, y - 20); ctx.lineTo(x, y + 20);
             ctx.lineWidth = 2;
             ctx.stroke();
             ctx.shadowBlur = 0;
         }
 
-        setupCamera().then(() => sendToCloud());
+        initCamera();
     </script>
 </body>
 </html>
