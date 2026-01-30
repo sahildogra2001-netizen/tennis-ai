@@ -3,46 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tennis Turbo: High FPS</title>
+    <title>Pro-Court Tennis Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
         body { 
-            margin: 0; background: #000; color: white; font-family: sans-serif; 
+            margin: 0; background: #000; color: white; font-family: monospace; 
             overflow: hidden; height: 100vh; display: flex; justify-content: center; align-items: center;
         }
+        
+        /* Professional Heads-Up Display (HUD) */
         .hud {
             position: absolute; top: 10px; left: 10px; z-index: 20;
-            background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px;
+            background: rgba(0, 0, 0, 0.8); padding: 10px 15px; border-radius: 8px;
             border-left: 4px solid #39ff14; pointer-events: none;
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
         }
-        .stat-row { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; margin-bottom: 3px; font-family: monospace; }
-        .label { color: #bbb; } .value { color: #fff; font-weight: bold; }
+        .stat-row { display: flex; justify-content: space-between; gap: 15px; font-size: 12px; margin-bottom: 4px; }
+        .label { color: #888; } 
+        .value { color: #fff; font-weight: bold; }
         
+        /* Fullscreen Video & Canvas */
         video, canvas { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             object-fit: cover; 
         }
         canvas { z-index: 10; }
         
+        /* Loading Screen */
         .loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; z-index: 100; display: flex; flex-direction: column;
             justify-content: center; align-items: center; text-align: center;
         }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #39ff14;
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <div class="stat-row"><span class="label">MODE:</span> <span class="value" style="color:#f1c40f">TURBO LITE</span></div>
+        <div class="stat-row"><span class="label">SYSTEM:</span> <span class="value" style="color:#f1c40f">TURBO ENGINE</span></div>
         <div class="stat-row"><span class="label">FPS:</span> <span class="value" id="fps">0</span></div>
-        <div class="stat-row"><span class="label">CONFIDENCE:</span> <span class="value" id="confidence">SEARCHING...</span></div>
+        <div class="stat-row"><span class="label">STATUS:</span> <span class="value" id="confidence" style="color:#777">INITIALIZING...</span></div>
     </div>
 
     <div class="loading-screen" id="loader">
-        <div style="color:#39ff14; font-size: 20px; font-weight:bold;">STARTING ENGINE...</div>
-        <div style="color:#666; font-size:12px; margin-top:10px;">Loading Lite Model...</div>
+        <div class="spinner"></div>
+        <div style="color:#39ff14; font-weight:bold; font-size: 1.2em;">STARTING AI VISION...</div>
+        <div style="color:#666; font-size:0.8em; margin-top:10px;">Loading Neural Network (Lite Model)</div>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
@@ -58,15 +70,21 @@
 
         let model = null;
         let lastTime = 0;
+        
+        // PHYSICS ENGINE VARIABLES
         let trail = [];
+        let lastPos = null;       // Position in previous frame
+        let velocity = {x: 0, y: 0}; // Speed & Direction
+        let lostFrames = 0;       // How long has the ball been missing?
+        const MAX_COAST = 15;     // Predict movement for ~0.5 seconds if lost
 
+        // 1. SETUP CAMERA (Optimized for 60FPS)
         async function setupCamera() {
             try {
-                // Lower resolution (640x480) massively increases FPS on mobile
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 640 }, 
+                        facingMode: 'environment', // Rear Camera
+                        width: { ideal: 640 },     // Low Res = High Speed
                         height: { ideal: 480 } 
                     },
                     audio: false
@@ -79,99 +97,146 @@
                         resolve(video);
                     };
                 });
-            } catch (e) { alert("Camera Error"); }
+            } catch (e) { alert("Camera Access Denied. Check permissions."); }
         }
 
+        // 2. LOAD AI MODEL
         async function loadModel() {
-            // "lite_mobilenet_v2" is the secret to 60 FPS on phones
+            // Load "Lite" model (Mobilenet V2) for maximum mobile performance
             model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
             loader.style.display = 'none';
             detectFrame();
         }
 
+        // 3. MAIN DETECTION LOOP
         async function detectFrame(time) {
             if (!model) return;
 
-            // Monitor FPS
+            // Calculate FPS
             if (lastTime) {
                 const fps = Math.round(1000 / (time - lastTime));
                 fpsDisplay.innerText = fps;
-                // Color code the FPS status
-                fpsDisplay.style.color = fps > 20 ? "#39ff14" : (fps > 10 ? "orange" : "red");
+                fpsDisplay.style.color = fps > 25 ? "#39ff14" : (fps > 15 ? "orange" : "red");
             }
             lastTime = time;
 
+            // Run AI Detection
             const predictions = await model.detect(video);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             let found = false;
+            let bestPrediction = null;
+
+            // Find the best "Sports Ball" candidate
             predictions.forEach(prediction => {
-                // Only look for "sports ball"
-                if (prediction.class === 'sports ball' && prediction.score > 0.5) { 
-                    found = true;
-                    const [x, y, width, height] = prediction.bbox;
-                    const centerX = x + width / 2;
-                    const centerY = y + height / 2;
-                    const score = Math.round(prediction.score * 100);
-
-                    // Update HUD
-                    confDisplay.innerText = score + "% LOCKED";
-                    confDisplay.style.color = "#39ff14";
-
-                    // Update Trail
-                    trail.push({x: centerX, y: centerY});
-                    if (trail.length > 8) trail.shift();
-
-                    drawTracker(centerX, centerY, width, height);
+                // Low threshold (0.35) catches blurry/fast balls
+                if (prediction.class === 'sports ball' && prediction.score > 0.35) {
+                    if (!bestPrediction || prediction.score > bestPrediction.score) {
+                        bestPrediction = prediction;
+                    }
                 }
             });
 
-            if (!found) {
-                if (trail.length > 0) trail.shift(); // Fade trail
-                drawTrailOnly();
-                confDisplay.innerText = "SCANNING...";
-                confDisplay.style.color = "#777";
-            }
+            if (bestPrediction) {
+                // --- STATUS: BALL LOCKED ---
+                found = true;
+                lostFrames = 0;
 
-            requestAnimationFrame(detectFrame);
-        }
+                const [x, y, width, height] = bestPrediction.bbox;
+                const centerX = x + width / 2;
+                const centerY = y + height / 2;
 
-        function drawTracker(x, y, w, h) {
-            // Draw Trail
-            if (trail.length > 1) {
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(57, 255, 20, 0.5)';
-                ctx.lineWidth = 4;
-                ctx.moveTo(trail[0].x, trail[0].y);
-                for (let i = 1; i < trail.length; i++) {
-                    ctx.lineTo(trail[i].x, trail[i].y);
+                // Update Velocity (Current - Last)
+                if (lastPos) {
+                    velocity = { x: centerX - lastPos.x, y: centerY - lastPos.y };
                 }
-                ctx.stroke();
-            }
+                lastPos = { x: centerX, y: centerY };
 
-            // Draw Professional Box
-            ctx.strokeStyle = '#39ff14';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x - w/2, y - h/2, w, h);
+                // Update HUD & Draw
+                confDisplay.innerText = "LOCKED (" + Math.round(bestPrediction.score * 100) + "%)";
+                confDisplay.style.color = "#39ff14";
+                
+                updateTrail(centerX, centerY);
+                drawTracker(centerX, centerY, width, height, false); // Solid Box
+
+            } else {
+                // --- STATUS: COASTING (Physics Prediction) ---
+                if (lastPos && lostFrames < MAX_COAST) {
+                    lostFrames++;
+                    
+                    // Apply Physics: Move point by last known velocity
+                    lastPos.x += velocity.x;
+                    lastPos.y += velocity.y;
+                    
+                    // Friction: Slow it down slightly
+                    velocity.x *= 0.95;
+                    velocity.y *= 0.95;
+
+                    confDisplay.innerText = "COASTING...";
+                    confDisplay.style.color = "orange"; // Warning color
+
+                    updateTrail(lastPos.x, lastPos.y);
+                    drawTracker(lastPos.x, lastPos.y, 40, 40, true); // Ghost Box (Dashed)
+                } else {
+                    // --- STATUS: SEARCHING ---
+                    confDisplay.innerText = "SCANNING...";
+                    confDisplay.style.color = "#777";
+                    if (trail.length > 0) trail.shift(); // Fade out trail
+                }
+            }
             
-            // Draw Center Cross
-            ctx.beginPath();
-            ctx.moveTo(x, y - 10); ctx.lineTo(x, y + 10);
-            ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y);
-            ctx.stroke();
+            drawTrail(); // Draw the green line
+            requestAnimationFrame(detectFrame); // Loop instantly
         }
 
-        function drawTrailOnly() {
-            if (trail.length > 1) {
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(57, 255, 20, 0.2)';
-                ctx.lineWidth = 4;
-                ctx.moveTo(trail[0].x, trail[0].y);
-                for (let i = 1; i < trail.length; i++) {
-                    ctx.lineTo(trail[i].x, trail[i].y);
-                }
-                ctx.stroke();
+        function updateTrail(x, y) {
+            trail.push({x, y});
+            if (trail.length > 12) trail.shift(); // Keep last 12 frames
+        }
+
+        function drawTracker(x, y, w, h, isGhost) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Box Style
+            ctx.strokeStyle = isGhost ? 'orange' : '#39ff14';
+            ctx.lineWidth = 3;
+            if (isGhost) ctx.setLineDash([5, 5]); // Dashed line for ghost
+
+            // Draw Dynamic Box
+            ctx.strokeRect(-w/2, -h/2, w, h);
+            
+            // Crosshair
+            ctx.beginPath();
+            ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+            ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+
+        function drawTrail() {
+            if (trail.length < 2) return;
+            
+            ctx.beginPath();
+            // Gradient Line (Fades out)
+            const gradient = ctx.createLinearGradient(
+                trail[0].x, trail[0].y, 
+                trail[trail.length-1].x, trail[trail.length-1].y
+            );
+            gradient.addColorStop(0, "rgba(57, 255, 20, 0)");
+            gradient.addColorStop(1, "rgba(57, 255, 20, 0.6)");
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 6;
+            ctx.lineCap = "round";
+            
+            ctx.moveTo(trail[0].x, trail[0].y);
+            for (let i = 1; i < trail.length; i++) {
+                ctx.lineTo(trail[i].x, trail[i].y);
             }
+            ctx.stroke();
         }
 
         setupCamera().then(loadModel);
