@@ -3,66 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye: Anti-Grass Edition</title>
+    <title>Hawk-Eye Tuner</title>
     <style>
-        /* Immersive Black Background */
-        body { 
-            margin: 0; background: #000; overflow: hidden; height: 100vh; 
-            display: flex; align-items: center; justify-content: center; 
-            font-family: 'Courier New', monospace; 
-        }
-        
-        /* Video & Drawing Canvas */
-        video, canvas { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            object-fit: cover; 
-        }
+        body { margin: 0; background: #000; overflow: hidden; height: 100vh; font-family: sans-serif; }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
         canvas { z-index: 10; pointer-events: none; }
         
-        /* Heads-Up Display */
-        .hud {
-            position: absolute; top: 10px; left: 10px; z-index: 20;
-            background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px;
-            border-left: 5px solid #ff4757; pointer-events: none;
-            box-shadow: 0 0 15px rgba(255, 71, 87, 0.2);
-            min-width: 160px;
+        /* HUD & Controls */
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 50; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
         }
-        .stat-row { color: #fff; font-size: 12px; margin-bottom: 5px; }
-        .label { color: #aaa; font-weight: bold; margin-right: 10px; }
-        .val { color: #fff; font-weight: bold; }
         
-        /* Control Buttons */
-        .controls {
-            position: absolute; bottom: 30px; z-index: 100; /* High Z-Index to ensure clickable */
-            width: 100%; display: flex; justify-content: center; gap: 15px;
+        .hud {
+            background: rgba(0,0,0,0.8); padding: 10px; margin: 10px; border-radius: 8px;
+            border-left: 5px solid #39ff14; pointer-events: auto;
         }
-        .btn {
-            background: #333; color: white; border: 1px solid #555;
-            padding: 15px 30px; border-radius: 30px; font-weight: bold; 
-            cursor: pointer; text-transform: uppercase; font-size: 16px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); user-select: none;
+        .stat { color: white; font-size: 12px; margin-bottom: 5px; font-family: monospace; }
+        
+        .sliders {
+            background: rgba(0,0,0,0.8); padding: 15px; margin: 10px; border-radius: 12px;
+            pointer-events: auto; padding-bottom: 25px;
         }
-        .btn:active { transform: scale(0.95); background: #555; }
-        .btn-clear { background: #ff4757; border-color: #ff4757; }
-        .btn-mask { background: #2f3542; color: #39ff14; border-color: #39ff14; }
+        .slider-row { display: flex; align-items: center; margin-bottom: 10px; color: white; font-size: 12px; font-weight: bold; }
+        .slider-row label { width: 90px; }
+        input[type=range] { flex-grow: 1; }
+        
+        .btn-mask {
+            background: #2f3542; color: #39ff14; border: 1px solid #39ff14;
+            padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-top: 5px; cursor: pointer; width: 100%;
+        }
+        .btn-clear {
+            position: absolute; bottom: 150px; right: 20px;
+            background: #ff4757; color: white; border: none; padding: 15px; 
+            border-radius: 50%; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: auto;
+        }
     </style>
 </head>
 <body>
 
-    <div class="hud">
-        <div class="stat-row" style="color:#ff4757; font-size:14px; margin-bottom:8px;">ANTI-GRASS MODE</div>
-        <div class="stat-row"><span class="label">STATUS</span> <span class="val" id="status">SCANNING</span></div>
-        <div class="stat-row"><span class="label">RED/GRN RATIO</span> <span class="val" id="ratio-val">0.0</span></div>
-        <div class="stat-row"><span class="label">DETECTED</span> <span class="val" id="pixels">0 px</span></div>
+    <div class="ui-layer">
+        <div class="hud">
+            <div class="stat">STATUS: <span id="status" style="color:yellow">SCANNING</span></div>
+            <div class="stat">PIXELS: <span id="pixels">0</span></div>
+            <button class="btn-mask" onclick="toggleMask()">👁 TOGGLE MASK VIEW</button>
+        </div>
+
+        <div class="sliders">
+            <div class="slider-row">
+                <label>COLOR WIDTH</label>
+                <input type="range" id="hueRange" min="10" max="60" value="30">
+            </div>
+            <div class="slider-row">
+                <label>GRASS BLOCK</label>
+                <input type="range" id="grassGate" min="0" max="80" value="35">
+            </div>
+            <div class="slider-row">
+                <label>BRIGHTNESS</label>
+                <input type="range" id="lightGate" min="10" max="100" value="30">
+            </div>
+            <div style="text-align:center; color:#888; font-size:10px; margin-top:5px;">
+                Adjust sliders until ball is WHITE and grass is BLACK
+            </div>
+        </div>
     </div>
+
+    <button class="btn-clear" onclick="clearMap()">✖</button>
 
     <video id="video" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
-
-    <div class="controls">
-        <button class="btn btn-mask" onclick="toggleMask()">👁 Mask</button>
-        <button class="btn btn-clear" onclick="clearMap()">✖ Clear Marks</button>
-    </div>
 
     <script>
         const video = document.getElementById('video');
@@ -70,34 +79,27 @@
         const ctx = canvas.getContext('2d');
         const pxDisplay = document.getElementById('pixels');
         const statusDisplay = document.getElementById('status');
-        const ratioDisplay = document.getElementById('ratio-val');
         
-        // --- STATE VARIABLES ---
+        // Sliders
+        const hueSlider = document.getElementById('hueRange');
+        const grassSlider = document.getElementById('grassGate');
+        const lightSlider = document.getElementById('lightGate');
+
+        // State
         let bounces = [];
         let trail = [];
         let lastPos = null;
         let framesConsistent = 0; 
         let showMask = false;
         
-        // --- MOTION GATE STATE ---
-        let startPos = null;      
-        let stationaryFrames = 0; 
+        // Motion Gate
+        let startPos = null;
+        let stationaryFrames = 0;
         
-        // --- TUNING CONSTANTS ---
-        
-        // 1. COLOR FILTER (The Anti-Grass Logic)
-        const COLOR_MIN = { h: 35, s: 50, l: 35 }; 
-        const COLOR_MAX = { h: 90, s: 100, l: 100 };
-        
-        // 2. STABILITY (Increased to stop flickering)
-        const MIN_BLOB_SIZE = 40; 
-        const CONSISTENCY_REQUIRED = 5; // Needs 5 frames to lock (slower but safer)
-
-        // 3. MOTION GATE
+        // Constants
         const STATIONARY_LIMIT = 30; 
         const MOVEMENT_REQUIRED = 20;
 
-        // --- SETUP CAMERA ---
         async function setupCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -110,10 +112,9 @@
                     canvas.height = video.videoHeight;
                     requestAnimationFrame(processFrame);
                 };
-            } catch (e) { alert("Camera Error. Use HTTPS."); }
+            } catch (e) { alert("Camera Error"); }
         }
 
-        // --- MAIN LOOP ---
         function processFrame() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -121,171 +122,122 @@
             const width = canvas.width;
             
             let sumX = 0, sumY = 0, count = 0;
-            let avgRatio = 0;
 
-            // PIXEL SCAN (Every 16th byte)
+            // GET SLIDER VALUES LIVE
+            // Hue Width: How far from "Pure Yellow" (60) do we allow?
+            const hueWidth = parseInt(hueSlider.value); 
+            const hueMin = 60 - hueWidth; 
+            const hueMax = 60 + hueWidth; 
+
+            // Grass Block: How much RED is required? (0.0 to 0.8)
+            const grassRatio = parseInt(grassSlider.value) / 100; 
+
+            // Brightness: Minimum Lightness (10-100)
+            const minLight = parseInt(lightSlider.value);
+
+            // PIXEL SCAN
             for (let i = 0; i < data.length; i += 16) { 
                 const r = data[i], g = data[i+1], b = data[i+2];
                 const hsl = rgbToHsl(r, g, b);
 
-                // 1. IS IT NEON?
-                const isNeon = (
-                    hsl.h >= COLOR_MIN.h && hsl.h <= COLOR_MAX.h &&
-                    hsl.s >= COLOR_MIN.s && hsl.s <= COLOR_MAX.s &&
-                    hsl.l >= COLOR_MIN.l && hsl.l <= COLOR_MAX.l
-                );
+                // 1. COLOR CHECK
+                const isNeon = (hsl.h >= hueMin && hsl.h <= hueMax && hsl.s >= 50 && hsl.l >= minLight);
 
-                // 2. IS IT GRASS? (The new fix)
-                // Grass is pure green (High G, Low R).
-                // Tennis ball is Yellow (High G, High R).
-                // We enforce that Red must be at least 50% of Green.
-                const isNotGrass = (r > g * 0.5); 
-                
-                // 3. IS IT BRIGHT ENOUGH? (Reject shadows)
-                const isBright = (r + g + b) > 150;
+                // 2. ANTI-GRASS CHECK (Dynamic)
+                // If grassSlider is high, we demand more Red.
+                const isNotGrass = (r > g * grassRatio);
 
-                if (isNeon && isNotGrass && isBright) {
+                if (isNeon && isNotGrass) {
                     sumX += (i / 4) % width;
                     sumY += Math.floor((i / 4) / width);
                     count++;
-                    avgRatio += (r / (g+1)); // Track ratio for debugging
                     
-                    if (showMask) { // White pixels for detected ball
-                        data[i] = 255; data[i+1] = 255; data[i+2] = 255; 
-                    }
-                } else if (showMask) { // Black pixels for ignored background
-                    data[i] = 0; data[i+1] = 0; data[i+2] = 0; 
+                    if (showMask) { data[i]=255; data[i+1]=255; data[i+2]=255; }
+                } else if (showMask) {
+                    data[i]=0; data[i+1]=0; data[i+2]=0;
                 }
             }
 
             if (showMask) ctx.putImageData(frame, 0, 0);
             else ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
             drawBounces(); 
 
-            // Debug Stats
-            pxDisplay.innerText = count + (framesConsistent > CONSISTENCY_REQUIRED ? " (LOCKED)" : "");
-            if(count > 0) ratioDisplay.innerText = (avgRatio / count).toFixed(2);
+            pxDisplay.innerText = count;
 
             // --- TRACKING ---
-            if (count > MIN_BLOB_SIZE) {
+            if (count > 30) {
                 const centerX = sumX / count;
                 const centerY = sumY / count;
                 const radius = Math.sqrt(count);
 
-                // Teleport Check
+                // Stability Check
                 let dist = 0;
-                if (lastPos) dist = Math.sqrt((centerX-lastPos.x)**2 + (centerY-lastPos.y)**2);
+                if(lastPos) dist = Math.sqrt((centerX-lastPos.x)**2 + (centerY-lastPos.y)**2);
 
-                if (!lastPos || dist < 150) { 
-                    framesConsistent++;
-                } else {
-                    framesConsistent = 0; 
+                if(!lastPos || dist < 150) framesConsistent++;
+                else framesConsistent = 0;
+
+                // Motion Gate
+                if(framesConsistent > 5) {
+                    if(!startPos) startPos = {x: centerX, y: centerY};
+                    if(Math.sqrt((centerX-startPos.x)**2 + (centerY-startPos.y)**2) < MOVEMENT_REQUIRED) stationaryFrames++;
+                    else { stationaryFrames=0; startPos={x:centerX, y:centerY}; }
                 }
 
-                // MOTION GATE
-                if (framesConsistent > 5) {
-                    if (!startPos) startPos = {x: centerX, y: centerY};
-                    const travelDist = Math.sqrt((centerX-startPos.x)**2 + (centerY-startPos.y)**2);
-                    
-                    if (travelDist < MOVEMENT_REQUIRED) stationaryFrames++;
-                    else { stationaryFrames = 0; startPos = {x: centerX, y: centerY}; }
-                }
-
-                if (stationaryFrames > STATIONARY_LIMIT) {
-                    statusDisplay.innerText = "IGNORED (STATIC)";
+                if(stationaryFrames > STATIONARY_LIMIT) {
+                    statusDisplay.innerText = "STATIC (IGNORED)";
                     statusDisplay.style.color = "red";
-                    framesConsistent = 0; 
-                    lastPos = null;
-                } else if (framesConsistent > CONSISTENCY_REQUIRED) {
-                    statusDisplay.innerText = "TRACKING BALL";
+                    framesConsistent = 0; lastPos = null;
+                } else if(framesConsistent > 3) {
+                    statusDisplay.innerText = "TRACKING";
                     statusDisplay.style.color = "#39ff14";
                     
                     updateTrail(centerX, centerY);
-                    
-                    // Bounce Physics
-                    if (lastPos && lastPos.valid) {
-                        const dy = centerY - lastPos.y;
-                        if (dy < -3 && lastPos.dy > 5) registerBounce(centerX, centerY + 10);
-                        lastPos.dy = dy;
+                    if(lastPos && lastPos.valid) {
+                         const dy = centerY - lastPos.y;
+                         if(dy < -3 && lastPos.dy > 5) registerBounce(centerX, centerY+10);
+                         lastPos.dy = dy;
                     }
-                    
                     drawTracker(centerX, centerY, radius);
-                    lastPos = { x: centerX, y: centerY, dy: (lastPos ? lastPos.dy : 0), valid: true };
+                    lastPos = {x:centerX, y:centerY, dy:(lastPos?lastPos.dy:0), valid:true};
                 }
             } else {
-                framesConsistent = 0;
-                stationaryFrames = 0;
-                lastPos = null;
-                statusDisplay.innerText = "SCANNING...";
-                statusDisplay.style.color = "#777";
+                framesConsistent = 0; stationaryFrames = 0; lastPos = null;
+                statusDisplay.innerText = "SCANNING"; statusDisplay.style.color = "yellow";
             }
 
             drawTrail();
             requestAnimationFrame(processFrame);
         }
 
-        // --- DRAWING ---
+        // Utils
         function drawTracker(x, y, r) {
             ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
-            ctx.strokeStyle = "#39ff14"; ctx.lineWidth = 4; ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(x-10, y); ctx.lineTo(x+10, y); 
-            ctx.moveTo(x, y-10); ctx.lineTo(x, y+10); ctx.lineWidth=2; ctx.stroke();
+            ctx.strokeStyle = "#39ff14"; ctx.lineWidth=4; ctx.stroke();
         }
-
         function drawTrail() {
-            if (trail.length < 2) return;
-            ctx.beginPath(); ctx.strokeStyle = "rgba(57,255,20,0.6)"; ctx.lineWidth = 4;
-            ctx.moveTo(trail[0].x, trail[0].y);
-            for(let p of trail) ctx.lineTo(p.x, p.y);
-            ctx.stroke();
+            if(trail.length<2) return;
+            ctx.beginPath(); ctx.strokeStyle="rgba(57,255,20,0.6)"; ctx.lineWidth=4;
+            ctx.moveTo(trail[0].x, trail[0].y); for(let p of trail) ctx.lineTo(p.x, p.y); ctx.stroke();
         }
-
         function drawBounces() {
             for(let b of bounces) {
-                ctx.beginPath(); ctx.strokeStyle = "yellow"; ctx.lineWidth=3;
+                ctx.beginPath(); ctx.strokeStyle="yellow"; ctx.lineWidth=3;
                 ctx.moveTo(b.x-10, b.y-10); ctx.lineTo(b.x+10, b.y+10);
-                ctx.moveTo(b.x+10, b.y-10); ctx.lineTo(b.x-10, b.y+10);
-                ctx.stroke();
+                ctx.moveTo(b.x+10, b.y-10); ctx.lineTo(b.x-10, b.y+10); ctx.stroke();
             }
         }
-        
-        function updateTrail(x, y) {
-            trail.push({x,y}); if(trail.length > 10) trail.shift();
-        }
+        function updateTrail(x, y) { trail.push({x,y}); if(trail.length>10) trail.shift(); }
+        function registerBounce(x, y) { bounces.push({x,y}); if(navigator.vibrate) navigator.vibrate(50); }
+        function clearMap() { bounces = []; }
+        function toggleMask() { showMask = !showMask; }
 
-        function registerBounce(x, y) {
-            bounces.push({x,y});
-            if(navigator.vibrate) navigator.vibrate(50);
-        }
-        
-        // --- BUTTON FUNCTIONS ---
-        function clearMap() { 
-            bounces = []; 
-            console.log("Marks cleared"); // Debug check
-        }
-        
-        function toggleMask() { 
-            showMask = !showMask; 
-        }
-
-        // --- COLOR UTILS ---
         function rgbToHsl(r, g, b) {
-            r/=255, g/=255, b/=255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-            if (max == min) { h = s = 0; } 
-            else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
-                }
-                h *= 60;
-            }
-            return { h, s: s * 100, l: l * 100 };
+            r/=255, g/=255, b/=255; const max=Math.max(r,g,b), min=Math.min(r,g,b);
+            let h,s,l=(max+min)/2;
+            if(max==min){h=s=0}else{const d=max-min; s=l>0.5?d/(2-max-min):d/(max+min);
+            switch(max){case r:h=(g-b)/d+(g<b?6:0);break; case g:h=(b-r)/d+2;break; case b:h=(r-g)/d+4;break;} h*=60;}
+            return {h,s:s*100,l:l*100};
         }
 
         setupCamera();
