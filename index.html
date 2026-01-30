@@ -1,700 +1,243 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye Motion Tracker</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            background: #000; 
-            overflow: hidden; 
-            height: 100vh; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            touch-action: none;
-        }
-        
-        /* Video & Canvas */
-        #container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-        }
-        video { 
-            position: absolute; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%);
-            min-width: 100%; 
-            min-height: 100%; 
-            object-fit: cover; 
-        }
-        canvas { 
-            position: absolute; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%);
-            z-index: 10; 
-        }
-        
-        /* HUD */
-        .hud {
-            position: absolute; 
-            top: 15px; 
-            left: 15px; 
-            z-index: 20;
-            background: rgba(0,0,0,0.9); 
-            padding: 12px 16px; 
-            border-radius: 10px;
-            border-left: 4px solid #39ff14; 
-            pointer-events: none;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-            max-width: 300px;
-        }
-        .status { 
-            color: #39ff14; 
-            font-weight: 700; 
-            font-size: 13px; 
-            margin-bottom: 6px;
-            letter-spacing: 0.5px;
-        }
-        .instruction { 
-            color: #fff; 
-            font-size: 11px; 
-            line-height: 1.4;
-            opacity: 0.9;
-        }
-        .stats {
-            color: #888;
-            font-size: 10px;
-            margin-top: 8px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4px;
-        }
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-        }
-        .stat-value {
-            color: #39ff14;
-            font-weight: 600;
-        }
-        
-        /* Controls */
-        .controls {
-            position: absolute; 
-            bottom: 25px; 
-            width: 100%; 
-            z-index: 100;
-            display: flex; 
-            justify-content: center; 
-            gap: 12px; 
-            padding: 0 20px;
-            flex-wrap: wrap;
-        }
-        .btn {
-            background: rgba(51, 51, 51, 0.95); 
-            color: white; 
-            border: 2px solid #555;
-            padding: 12px 24px; 
-            border-radius: 25px; 
-            font-weight: 600; 
-            font-size: 14px; 
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-            transition: all 0.2s ease;
-            backdrop-filter: blur(10px);
-        }
-        .btn:active {
-            transform: scale(0.95);
-        }
-        .btn-clear { 
-            background: rgba(255, 71, 87, 0.9); 
-            border-color: #ff4757; 
-        }
-        .btn-settings {
-            background: rgba(108, 92, 231, 0.9);
-            border-color: #6c5ce7;
-        }
-        .btn-review {
-            background: rgba(255, 184, 0, 0.9);
-            border-color: #ffb800;
-        }
-
-        /* Settings Panel */
-        #settings-panel {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 25px;
-            border-radius: 15px;
-            z-index: 200;
-            display: none;
-            max-width: 350px;
-            width: 90%;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
-        }
-        #settings-panel.active {
-            display: block;
-        }
-        .settings-header {
-            color: #fff;
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #39ff14;
-            padding-bottom: 10px;
-        }
-        .setting-group {
-            margin-bottom: 18px;
-        }
-        .setting-label {
-            color: #aaa;
-            font-size: 12px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .setting-value {
-            color: #39ff14;
-            font-weight: 600;
-        }
-        input[type="range"] {
-            width: 100%;
-            height: 6px;
-            border-radius: 5px;
-            background: #333;
-            outline: none;
-            -webkit-appearance: none;
-        }
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #39ff14;
-            cursor: pointer;
-        }
-        .close-settings {
-            margin-top: 20px;
-            width: 100%;
-            padding: 12px;
-            background: #39ff14;
-            color: #000;
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        /* Bounce Counter */
-        #bounce-counter {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            z-index: 20;
-            background: rgba(0,0,0,0.9);
-            padding: 12px 20px;
-            border-radius: 10px;
-            border-right: 4px solid #FFFF00;
-            pointer-events: none;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-        }
-        .bounce-count {
-            color: #FFFF00;
-            font-size: 28px;
-            font-weight: 700;
-            text-align: center;
-        }
-        .bounce-label {
-            color: #888;
-            font-size: 10px;
-            text-align: center;
-            margin-top: 2px;
-            letter-spacing: 1px;
-        }
-
-        /* Review Panel */
-        #review-panel {
-            position: absolute;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 20px;
-            border-radius: 15px;
-            z-index: 150;
-            display: none;
-            max-width: 90%;
-            width: 400px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-        #review-panel.active {
-            display: block;
-        }
-        .review-header {
-            color: #ffb800;
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #ffb800;
-            padding-bottom: 8px;
-        }
-        .bounce-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 12px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            border-left: 3px solid #FFFF00;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .bounce-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateX(5px);
-        }
-        .bounce-number {
-            color: #FFFF00;
-            font-weight: 700;
-            font-size: 14px;
-            margin-bottom: 4px;
-        }
-        .bounce-details {
-            color: #aaa;
-            font-size: 11px;
-        }
-        .close-review {
-            margin-top: 15px;
-            width: 100%;
-            padding: 10px;
-            background: #ffb800;
-            color: #000;
-            border: none;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        /* Bounce animation */
-        @keyframes bounceImpact {
-            0% { transform: scale(0); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .new-bounce {
-            animation: bounceImpact 0.3s ease-out;
-        }
-
-        /* Auto-tracking indicator */
-        .auto-track-indicator {
-            position: absolute;
-            top: 80px;
-            left: 15px;
-            background: rgba(57, 255, 20, 0.2);
-            color: #39ff14;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            z-index: 20;
-            pointer-events: none;
-            border: 1px solid #39ff14;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hawk-Eye Mobile Tracker</title>
+<style>
+body { margin:0; background:black; overflow:hidden; font-family:sans-serif; }
+video, canvas { position:absolute; inset:0; margin:auto; }
+canvas { z-index:10; }
+</style>
 </head>
 <body>
 
-    <div id="container">
-        <video id="video" autoplay playsinline muted></video>
-        <canvas id="canvas"></canvas>
-    </div>
-
-    <div class="hud">
-        <div class="status" id="status-text">🎯 AUTO-TRACKING ACTIVE</div>
-        <div class="instruction" id="instruct-text">Tracking fastest moving object automatically</div>
-        <div class="stats">
-            <div class="stat-item">
-                <span>Motion:</span>
-                <span class="stat-value" id="motion-level">0</span>
-            </div>
-            <div class="stat-item">
-                <span>FPS:</span>
-                <span class="stat-value" id="fps-count">0</span>
-            </div>
-            <div class="stat-item">
-                <span>Speed:</span>
-                <span class="stat-value" id="speed-display">0</span>
-            </div>
-            <div class="stat-item">
-                <span>VelY:</span>
-                <span class="stat-value" id="velocity-display">0</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="auto-track-indicator">
-        ✓ Motion Detection Mode
-    </div>
-
-    <div id="bounce-counter">
-        <div class="bounce-count" id="bounce-count">0</div>
-        <div class="bounce-label">BOUNCES</div>
-    </div>
-
-    <div class="controls">
-        <button class="btn btn-settings" id="settings-btn">⚙️ SETTINGS</button>
-        <button class="btn btn-review" id="review-btn">📋 REVIEW</button>
-        <button class="btn btn-clear" id="clear-btn">✖ CLEAR</button>
-    </div>
-
-    <div id="settings-panel">
-        <div class="settings-header">Motion Detection Settings</div>
-        
-        <div class="setting-group">
-            <div class="setting-label">
-                <span>Motion Threshold</span>
-                <span class="setting-value" id="motion-val">20</span>
-            </div>
-            <input type="range" id="motion-range" min="10" max="50" value="20">
-        </div>
-        
-        <div class="setting-group">
-            <div class="setting-label">
-                <span>Min Object Size (pixels)</span>
-                <span class="setting-value" id="size-val">50</span>
-            </div>
-            <input type="range" id="size-range" min="20" max="200" value="50">
-        </div>
-        
-        <div class="setting-group">
-            <div class="setting-label">
-                <span>Bounce Sensitivity</span>
-                <span class="setting-value" id="bounce-val">6</span>
-            </div>
-            <input type="range" id="bounce-range" min="3" max="15" value="6" step="1">
-        </div>
-        
-        <div class="setting-group">
-            <div class="setting-label">
-                <span>Bounce Cooldown (ms)</span>
-                <span class="setting-value" id="cooldown-val">600</span>
-            </div>
-            <input type="range" id="cooldown-range" min="200" max="1000" value="600" step="50">
-        </div>
-        
-        <div class="setting-group">
-            <div class="setting-label">
-                <span>Trail Length</span>
-                <span class="setting-value" id="trail-val">25</span>
-            </div>
-            <input type="range" id="trail-range" min="5" max="50" value="25">
-        </div>
-        
-        <button class="close-settings" id="close-settings">CLOSE</button>
-    </div>
-
-    <div id="review-panel">
-        <div class="review-header">Bounce Review</div>
-        <div id="bounce-list"></div>
-        <button class="close-review" id="close-review">CLOSE</button>
-    </div>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
 
 <script>
 /* ==========================
-   DOM
+   MODE SELECTION
 ========================== */
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-const motionLevel = document.getElementById('motion-level');
-const fpsCount = document.getElementById('fps-count');
-const speedDisplay = document.getElementById('speed-display');
-const velocityDisplay = document.getElementById('velocity-display');
-const bounceCountDisplay = document.getElementById('bounce-count');
-const settingsPanel = document.getElementById('settings-panel');
-const reviewPanel = document.getElementById('review-panel');
-const bounceList = document.getElementById('bounce-list');
+// 🔁 change to "indoor" or "outdoor"
+const COURT_MODE = "outdoor";
 
 /* ==========================
-   TENNIS MODEL
+   MODE TUNING
 ========================== */
-const TENNIS_MIN_RADIUS = 6;
-const TENNIS_MAX_RADIUS = 18;
-const MIN_TENNIS_SPEED = 5;
-const REQUIRED_STABLE_FRAMES = 3;
+const MODES = {
+  indoor: {
+    BG_LEARN_RATE: 0.08,
+    MOTION_THRESHOLD: 14,
+    SAT_MIN: 0.35,
+    VAL_MIN: 0.35
+  },
+  outdoor: {
+    BG_LEARN_RATE: 0.03,
+    MOTION_THRESHOLD: 20,
+    SAT_MIN: 0.45,
+    VAL_MIN: 0.45
+  }
+};
+
+const MODE = MODES[COURT_MODE];
+
+/* ==========================
+   DOM
+========================== */
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+/* ==========================
+   PROCESSING CANVAS (LOW RES)
+========================== */
+const procCanvas = document.createElement("canvas");
+const procCtx = procCanvas.getContext("2d", { willReadFrequently:true });
+
+const PROC_WIDTH = 160;
+let PROC_HEIGHT = 0;
+
+/* ==========================
+   BACKGROUND MODEL
+========================== */
+let background = null;
+let motionMask = null;
 
 /* ==========================
    STATE
 ========================== */
-let previousFrame = null;
 let lastPos = null;
-let lastVelocityY = 0;
-let tennisConfidence = 0;
-
-let trail = [];
-let bounces = [];
-let lastBounceTime = 0;
-
-let velocity = { x: 0, y: 0 };
-let positionHistory = [];
-
-let maxTrailLength = 25;
-let bounceThreshold = 6;
-let bounceCooldown = 600;
-
-let motionThreshold = 20;
-let minObjectSize = 50;
-
-/* ==========================
-   FPS
-========================== */
-let frameCount = 0;
-let lastFpsUpdate = Date.now();
+let lastVelY = 0;
+let lastBounce = 0;
 
 /* ==========================
    CAMERA
 ========================== */
 async function setupCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: 1280, height: 720 },
-        audio: false
-    });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:"environment" }, audio:false
+  });
+  video.srcObject = stream;
 
-    video.srcObject = stream;
+  video.onloadedmetadata = () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    video.onloadedmetadata = () => {
-        const ar = video.videoWidth / video.videoHeight;
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerWidth / ar;
-        requestAnimationFrame(processFrame);
-    };
+    PROC_HEIGHT = Math.round(PROC_WIDTH * video.videoHeight / video.videoWidth);
+    procCanvas.width = PROC_WIDTH;
+    procCanvas.height = PROC_HEIGHT;
+
+    requestAnimationFrame(loop);
+  };
 }
 
 /* ==========================
    MAIN LOOP
 ========================== */
-function processFrame() {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const curr = ctx.getImageData(0, 0, canvas.width, canvas.height);
+function loop() {
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-    if (!previousFrame) {
-        previousFrame = curr;
-        requestAnimationFrame(processFrame);
-        return;
-    }
+  let mask = detectMotion();
+  mask = cleanMotion(mask);
+  const ball = findBall(mask);
 
-    const motionMap = detectMotion(previousFrame, curr);
-    previousFrame = curr;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    drawBounces();
-
-    const ball = findTennisBall(motionMap);
-
-    if (!ball) {
-        tennisConfidence = 0;
-        trail = [];
-        lastPos = null;
-        motionLevel.innerText = 0;
-        speedDisplay.innerText = 0;
-        velocityDisplay.innerText = 0;
-        updateFPS();
-        requestAnimationFrame(processFrame);
-        return;
-    }
-
-    tennisConfidence++;
-    if (tennisConfidence < REQUIRED_STABLE_FRAMES) {
-        requestAnimationFrame(processFrame);
-        return;
-    }
-
-    const { centerX, centerY, bottomY, size } = ball;
-    motionLevel.innerText = Math.round(size);
+  if (ball) {
+    ctx.strokeStyle="#39ff14";
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, 18, 0, Math.PI*2);
+    ctx.stroke();
 
     if (lastPos) {
-        velocity.x = centerX - lastPos.x;
-        velocity.y = centerY - lastPos.y;
+      const vy = ball.y - lastPos.y;
 
-        const speed = Math.hypot(velocity.x, velocity.y);
+      if (
+        lastVelY > 8 &&
+        vy < -8 &&
+        Date.now() - lastBounce > 600 &&
+        ball.y > canvas.height * 0.55
+      ) {
+        lastBounce = Date.now();
+        if (navigator.vibrate) navigator.vibrate(80);
+      }
 
-        if (speed < MIN_TENNIS_SPEED) {
-            requestAnimationFrame(processFrame);
-            return;
-        }
-
-        speedDisplay.innerText = Math.round(speed);
-        velocityDisplay.innerText = Math.round(velocity.y);
-
-        // Tennis bounce: downward → upward near court
-        if (
-            lastVelocityY > bounceThreshold &&
-            velocity.y < -bounceThreshold &&
-            Date.now() - lastBounceTime > bounceCooldown &&
-            bottomY > canvas.height * 0.55
-        ) {
-            registerBounce(centerX, bottomY, speed);
-            lastBounceTime = Date.now();
-        }
-
-        // Only ballistic motion gets a trail
-        if (Math.abs(velocity.y) > 2 && Math.abs(velocity.x) < 40) {
-            trail.push({ x: centerX, y: centerY });
-            if (trail.length > maxTrailLength) trail.shift();
-        }
-
-        lastVelocityY = velocity.y;
+      lastVelY = vy;
     }
+    lastPos = ball;
+  } else {
+    lastPos = null;
+  }
 
-    lastPos = { x: centerX, y: centerY };
-    drawTrail();
-    drawTracker(centerX, centerY, Math.sqrt(size / Math.PI));
-
-    updateFPS();
-    requestAnimationFrame(processFrame);
+  requestAnimationFrame(loop);
 }
 
 /* ==========================
    MOTION DETECTION
 ========================== */
-function detectMotion(prev, curr) {
-    const p = prev.data, c = curr.data;
-    const map = new Uint8ClampedArray(canvas.width * canvas.height);
-    const stride = 4;
+function detectMotion() {
+  procCtx.drawImage(video,0,0,PROC_WIDTH,PROC_HEIGHT);
+  const frame = procCtx.getImageData(0,0,PROC_WIDTH,PROC_HEIGHT);
+  const d = frame.data;
 
-    for (let y = 0; y < canvas.height; y += stride) {
-        for (let x = 0; x < canvas.width; x += stride) {
-            const i = (y * canvas.width + x) * 4;
-            const diff = (
-                Math.abs(c[i] - p[i]) +
-                Math.abs(c[i + 1] - p[i + 1]) +
-                Math.abs(c[i + 2] - p[i + 2])
-            ) / 3;
+  if (!background) {
+    background = new Float32Array(d.length);
+    for (let i=0;i<d.length;i++) background[i]=d[i];
+    motionMask = new Uint8ClampedArray(PROC_WIDTH*PROC_HEIGHT);
+    return motionMask;
+  }
 
-            if (diff > motionThreshold) {
-                map[y * canvas.width + x] = 255;
-            }
-        }
+  motionMask.fill(0);
+
+  for (let i=0;i<d.length;i+=4) {
+    const dr = Math.abs(d[i]-background[i]);
+    const dg = Math.abs(d[i+1]-background[i+1]);
+    const db = Math.abs(d[i+2]-background[i+2]);
+    const diff = dr+dg+db;
+
+    if (diff > MODE.MOTION_THRESHOLD*3) {
+      motionMask[i>>2]=255;
+    } else {
+      background[i]+= (d[i]-background[i])*MODE.BG_LEARN_RATE;
+      background[i+1]+= (d[i+1]-background[i+1])*MODE.BG_LEARN_RATE;
+      background[i+2]+= (d[i+2]-background[i+2])*MODE.BG_LEARN_RATE;
     }
-    return map;
+  }
+  return motionMask;
 }
 
 /* ==========================
-   BALL DETECTION
+   MORPHOLOGY
 ========================== */
-function findTennisBall(map) {
-    const visited = new Uint8ClampedArray(map.length);
-    let best = null;
-
-    for (let i = 0; i < map.length; i++) {
-        if (map[i] && !visited[i]) {
-            const blob = floodFill(map, visited, i % canvas.width, Math.floor(i / canvas.width));
-            if (!blob) continue;
-
-            const r = Math.sqrt(blob.size / Math.PI);
-            const ar = (blob.bounds.maxX - blob.bounds.minX) /
-                       (blob.bounds.maxY - blob.bounds.minY);
-
-            if (
-                r < TENNIS_MIN_RADIUS ||
-                r > TENNIS_MAX_RADIUS ||
-                ar < 0.75 || ar > 1.3
-            ) continue;
-
-            if (!best || blob.size > best.size) best = blob;
-        }
+function cleanMotion(mask) {
+  const out = new Uint8ClampedArray(mask.length);
+  for (let y=1;y<PROC_HEIGHT-1;y++) {
+    for (let x=1;x<PROC_WIDTH-1;x++) {
+      let i=y*PROC_WIDTH+x,count=0;
+      for(let dy=-1;dy<=1;dy++)
+        for(let dx=-1;dx<=1;dx++)
+          if(mask[i+dy*PROC_WIDTH+dx]) count++;
+      if(count>=4) out[i]=255;
     }
-    return best;
-}
-
-function floodFill(map, visited, sx, sy) {
-    const stack = [[sx, sy]];
-    let minX = sx, maxX = sx, minY = sy, maxY = sy;
-    let sumX = 0, sumY = 0, count = 0;
-
-    while (stack.length) {
-        const [x, y] = stack.pop();
-        const idx = y * canvas.width + x;
-        if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
-        if (visited[idx] || !map[idx]) continue;
-
-        visited[idx] = 1;
-        sumX += x; sumY += y; count++;
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-
-        stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
-    }
-
-    return {
-        centerX: sumX / count,
-        centerY: sumY / count,
-        bottomY: maxY,
-        size: count,
-        bounds: { minX, maxX, minY, maxY }
-    };
+  }
+  return out;
 }
 
 /* ==========================
-   DRAWING
+   BALL DETECTION + COLOR CHECK
 ========================== */
-function drawTracker(x, y, r) {
-    ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.stroke();
-}
+function findBall(mask) {
+  const visited = new Uint8ClampedArray(mask.length);
+  let best=null;
 
-function drawTrail() {
-    for (let i = 1; i < trail.length; i++) {
-        ctx.strokeStyle = `rgba(57,255,20,${i/trail.length})`;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(trail[i-1].x, trail[i-1].y);
-        ctx.lineTo(trail[i].x, trail[i].y);
-        ctx.stroke();
+  for(let i=0;i<mask.length;i++){
+    if(mask[i] && !visited[i]){
+      const b=flood(mask,visited,i%PROC_WIDTH,(i/PROC_WIDTH)|0);
+      if(b.size<14||b.size>500) continue;
+      if(!isTennisColor(b.cx,b.cy)) continue;
+      if(!best||b.size>best.size) best=b;
     }
+  }
+  if(!best) return null;
+
+  return {
+    x: best.cx * canvas.width / PROC_WIDTH,
+    y: best.cy * canvas.height / PROC_HEIGHT
+  };
 }
 
-function drawBounces() {
-    bounces.forEach((b, i) => {
-        ctx.strokeStyle = "#FFFF00";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, 22, 0, Math.PI*2);
-        ctx.stroke();
-    });
+function flood(mask,visited,sx,sy){
+  const st=[[sx,sy]];
+  let sxm=0,sym=0,c=0;
+  while(st.length){
+    const [x,y]=st.pop(),i=y*PROC_WIDTH+x;
+    if(x<0||y<0||x>=PROC_WIDTH||y>=PROC_HEIGHT) continue;
+    if(visited[i]||!mask[i]) continue;
+    visited[i]=1;
+    sxm+=x; sym+=y; c++;
+    st.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+  }
+  return { cx:sxm/c, cy:sym/c, size:c };
 }
 
 /* ==========================
-   BOUNCE
+   COLOR VERIFICATION (HSV-ish)
 ========================== */
-function registerBounce(x, y, speed) {
-    bounces.push({ x, y, speed, time: new Date() });
-    bounceCountDisplay.innerText = bounces.length;
-    if (navigator.vibrate) navigator.vibrate(100);
-}
+function isTennisColor(px,py){
+  const x=Math.floor(px),y=Math.floor(py);
+  const d=procCtx.getImageData(x,y,1,1).data;
+  const r=d[0]/255,g=d[1]/255,b=d[2]/255;
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  const v=max;
+  const s=max===0?0:(max-min)/max;
 
-/* ==========================
-   FPS
-========================== */
-function updateFPS() {
-    frameCount++;
-    const now = Date.now();
-    if (now - lastFpsUpdate > 1000) {
-        fpsCount.innerText = frameCount;
-        frameCount = 0;
-        lastFpsUpdate = now;
-    }
+  // tennis yellow-green window
+  return (
+    g>r*1.1 &&
+    g>b*1.1 &&
+    s>MODE.SAT_MIN &&
+    v>MODE.VAL_MIN
+  );
 }
 
 /* ==========================
