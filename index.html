@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye Touch Pro</title>
+    <title>Hawk-Eye Motion Tracker</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -36,7 +36,6 @@
             left: 50%; 
             transform: translate(-50%, -50%);
             z-index: 10; 
-            cursor: crosshair;
         }
         
         /* HUD */
@@ -48,13 +47,13 @@
             background: rgba(0,0,0,0.9); 
             padding: 12px 16px; 
             border-radius: 10px;
-            border-left: 4px solid #ff4757; 
+            border-left: 4px solid #39ff14; 
             pointer-events: none;
             box-shadow: 0 4px 20px rgba(0,0,0,0.7);
             max-width: 300px;
         }
         .status { 
-            color: #ff4757; 
+            color: #39ff14; 
             font-weight: 700; 
             font-size: 13px; 
             margin-bottom: 6px;
@@ -115,11 +114,6 @@
             background: rgba(255, 71, 87, 0.9); 
             border-color: #ff4757; 
         }
-        .btn-reset { 
-            background: rgba(47, 53, 66, 0.95); 
-            border-color: #39ff14; 
-            color: #39ff14; 
-        }
         .btn-settings {
             background: rgba(108, 92, 231, 0.9);
             border-color: #6c5ce7;
@@ -127,26 +121,6 @@
         .btn-review {
             background: rgba(255, 184, 0, 0.9);
             border-color: #ffb800;
-        }
-
-        /* Calibration Target Ring */
-        #calib-ring {
-            position: absolute; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%);
-            width: 80px; 
-            height: 80px; 
-            border: 3px dashed #fff; 
-            border-radius: 50%;
-            z-index: 15; 
-            pointer-events: none;
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
-            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); }
         }
 
         /* Settings Panel */
@@ -317,6 +291,22 @@
         .new-bounce {
             animation: bounceImpact 0.3s ease-out;
         }
+
+        /* Auto-tracking indicator */
+        .auto-track-indicator {
+            position: absolute;
+            top: 80px;
+            left: 15px;
+            background: rgba(57, 255, 20, 0.2);
+            color: #39ff14;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 20;
+            pointer-events: none;
+            border: 1px solid #39ff14;
+        }
     </style>
 </head>
 <body>
@@ -327,26 +317,30 @@
     </div>
 
     <div class="hud">
-        <div class="status" id="status-text">⚠️ NOT CALIBRATED</div>
-        <div class="instruction" id="instruct-text">Tap on the tennis ball to start tracking</div>
+        <div class="status" id="status-text">🎯 AUTO-TRACKING ACTIVE</div>
+        <div class="instruction" id="instruct-text">Tracking fastest moving object automatically</div>
         <div class="stats">
             <div class="stat-item">
-                <span>Pixels:</span>
-                <span class="stat-value" id="px-count">0</span>
+                <span>Motion:</span>
+                <span class="stat-value" id="motion-level">0</span>
             </div>
             <div class="stat-item">
                 <span>FPS:</span>
                 <span class="stat-value" id="fps-count">0</span>
             </div>
             <div class="stat-item">
+                <span>Speed:</span>
+                <span class="stat-value" id="speed-display">0</span>
+            </div>
+            <div class="stat-item">
                 <span>VelY:</span>
                 <span class="stat-value" id="velocity-display">0</span>
             </div>
-            <div class="stat-item">
-                <span>Confidence:</span>
-                <span class="stat-value" id="confidence">0%</span>
-            </div>
         </div>
+    </div>
+
+    <div class="auto-track-indicator">
+        ✓ Motion Detection Mode
     </div>
 
     <div id="bounce-counter">
@@ -354,56 +348,53 @@
         <div class="bounce-label">BOUNCES</div>
     </div>
 
-    <div id="calib-ring"></div>
-
     <div class="controls">
-        <button class="btn btn-reset" id="reset-btn">🎯 RETARGET</button>
         <button class="btn btn-settings" id="settings-btn">⚙️ SETTINGS</button>
         <button class="btn btn-review" id="review-btn">📋 REVIEW</button>
         <button class="btn btn-clear" id="clear-btn">✖ CLEAR</button>
     </div>
 
     <div id="settings-panel">
-        <div class="settings-header">Tracking Settings</div>
+        <div class="settings-header">Motion Detection Settings</div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Hue Tolerance</span>
-                <span class="setting-value" id="hue-val">15°</span>
+                <span>Motion Threshold</span>
+                <span class="setting-value" id="motion-val">20</span>
             </div>
-            <input type="range" id="hue-range" min="5" max="40" value="15">
+            <input type="range" id="motion-range" min="10" max="50" value="20">
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Saturation Tolerance</span>
-                <span class="setting-value" id="sat-val">30%</span>
+                <span>Min Object Size (pixels)</span>
+                <span class="setting-value" id="size-val">50</span>
             </div>
-            <input type="range" id="sat-range" min="10" max="60" value="30">
+            <input type="range" id="size-range" min="20" max="200" value="50">
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Brightness Tolerance</span>
-                <span class="setting-value" id="light-val">40%</span>
+                <span>Bounce Sensitivity</span>
+                <span class="setting-value" id="bounce-val">6</span>
             </div>
-            <input type="range" id="light-range" min="20" max="70" value="40">
+            <input type="range" id="bounce-range" min="3" max="15" value="6" step="1">
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Bounce Sensitivity (lower = more sensitive)</span>
-                <span class="setting-value" id="bounce-val">4</span>
+                <span>Bounce Cooldown (ms)</span>
+                <span class="setting-value" id="cooldown-val">600</span>
             </div>
-            <input type="range" id="bounce-range" min="2" max="12" value="4" step="1">
+            <input type="range" id="cooldown-range" min="200" max="1000" value="600" step="50">
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Trail Length</span>
-                <span class="setting-value" id="trail-val">20</span>
+                <span class="setting-value" id="trail-val">25</span>
             </div>
-            <input type="range" id="trail-range" min="5" max="40" value="20">
+            <input type="range" id="trail-range" min="5" max="50" value="25">
         </div>
         
         <button class="close-settings" id="close-settings">CLOSE</button>
@@ -422,32 +413,30 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const statusText = document.getElementById('status-text');
         const instructText = document.getElementById('instruct-text');
-        const pxCount = document.getElementById('px-count');
+        const motionLevel = document.getElementById('motion-level');
         const fpsCount = document.getElementById('fps-count');
+        const speedDisplay = document.getElementById('speed-display');
         const velocityDisplay = document.getElementById('velocity-display');
-        const confidenceDisplay = document.getElementById('confidence');
-        const calibRing = document.getElementById('calib-ring');
         const bounceCountDisplay = document.getElementById('bounce-count');
         const settingsPanel = document.getElementById('settings-panel');
         const reviewPanel = document.getElementById('review-panel');
         const bounceList = document.getElementById('bounce-list');
 
-        // --- CALIBRATION STATE ---
-        let isCalibrated = false;
-        let targetColor = { h: 45, s: 50, l: 50 };
-        let colorRange = { h: 15, s: 30, l: 40 };
-
         // --- TRACKING STATE ---
         let bounces = [];
         let trail = [];
-        let positionHistory = []; // Track last N positions for better bounce detection
+        let positionHistory = [];
         let lastPos = null;
         let velocity = { x: 0, y: 0 };
-        let lostFrames = 0;
         let lastBounceTime = 0;
-        let maxTrailLength = 20;
-        let bounceThreshold = 4;
-        let lowestPoint = null; // Track the lowest point before bounce
+        let maxTrailLength = 25;
+        let bounceThreshold = 6;
+        let bounceCooldown = 600;
+        
+        // Motion detection parameters
+        let motionThreshold = 20;
+        let minObjectSize = 50;
+        let previousFrame = null;
 
         // --- PERFORMANCE TRACKING ---
         let frameCount = 0;
@@ -470,7 +459,6 @@
                 video.srcObject = stream;
                 
                 video.onloadedmetadata = () => {
-                    // Maintain aspect ratio
                     const videoAspect = video.videoWidth / video.videoHeight;
                     const windowAspect = window.innerWidth / window.innerHeight;
                     
@@ -489,148 +477,41 @@
             }
         }
 
-        // --- CALIBRATION ---
-        canvas.addEventListener('click', (e) => {
-            if (isCalibrated) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            const x = Math.floor((e.clientX - rect.left) * scaleX);
-            const y = Math.floor((e.clientY - rect.top) * scaleY);
-
-            // Sample 5x5 area for better color accuracy
-            const sampleSize = 5;
-            const imageData = ctx.getImageData(
-                Math.max(0, x - sampleSize),
-                Math.max(0, y - sampleSize),
-                sampleSize * 2,
-                sampleSize * 2
-            );
-            
-            const avgColor = getAverageColor(imageData.data);
-            targetColor = rgbToHsl(avgColor.r, avgColor.g, avgColor.b);
-            isCalibrated = true;
-            
-            // UI Feedback
-            statusText.innerText = "✅ TARGET LOCKED";
-            statusText.style.color = "#39ff14";
-            instructText.innerText = `Tracking H:${Math.round(targetColor.h)}° S:${Math.round(targetColor.s)}% L:${Math.round(targetColor.l)}%`;
-            calibRing.style.display = 'none';
-            
-            // Haptic feedback
-            if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-        });
-
         // --- MAIN PROCESSING LOOP ---
         function processFrame() {
-            const startTime = performance.now();
-            
             // Draw video frame
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            if (!isCalibrated) {
-                drawBounces();
-                updateFPS();
+            // Get current frame data
+            const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            if (!previousFrame) {
+                previousFrame = currentFrame;
                 requestAnimationFrame(processFrame);
                 return;
             }
 
-            // Get frame data
-            const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = frame.data;
+            // MOTION DETECTION: Find areas with significant change
+            const motionData = detectMotion(previousFrame, currentFrame);
             
-            // Tracking variables
-            let sumX = 0, sumY = 0, count = 0;
-            let minX = canvas.width, maxX = 0;
-            let minY = canvas.height, maxY = 0;
-
-            // Color matching thresholds
-            const hMin = (targetColor.h - colorRange.h + 360) % 360;
-            const hMax = (targetColor.h + colorRange.h) % 360;
-            const sMin = Math.max(0, targetColor.s - colorRange.s);
-            const sMax = Math.min(100, targetColor.s + colorRange.s);
-            const lMin = Math.max(10, targetColor.l - colorRange.l);
-            const lMax = Math.min(100, targetColor.l + colorRange.l);
-
-            // Pixel scan with stride for performance
-            const stride = 8; // Check every 8th pixel
-            for (let i = 0; i < data.length; i += stride * 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                const hsl = rgbToHsl(r, g, b);
-
-                // Hue matching with wrap-around
-                let hueMatch;
-                if (hMin > hMax) { // Wrap around 360
-                    hueMatch = (hsl.h >= hMin || hsl.h <= hMax);
-                } else {
-                    hueMatch = (hsl.h >= hMin && hsl.h <= hMax);
-                }
-                
-                if (hueMatch && 
-                    hsl.s >= sMin && hsl.s <= sMax && 
-                    hsl.l >= lMin && hsl.l <= lMax) {
-                    
-                    const pixelIndex = i / 4;
-                    const x = pixelIndex % canvas.width;
-                    const y = Math.floor(pixelIndex / canvas.width);
-                    
-                    sumX += x;
-                    sumY += y;
-                    count++;
-                    
-                    // Update bounding box
-                    minX = Math.min(minX, x);
-                    maxX = Math.max(maxX, x);
-                    minY = Math.min(minY, y);
-                    maxY = Math.max(maxY, y);
-                }
-            }
-
-            // Object validation
-            let isValidBall = false;
-            let centerX = 0, centerY = 0, radius = 0, bottomY = 0;
-            let confidence = 0;
-
-            if (count > 20) { // Noise threshold
-                const width = maxX - minX;
-                const height = maxY - minY;
-                const ratio = width > 0 ? height / width : 0;
-
-                // Shape validation: should be roughly circular
-                if (ratio > 0.6 && ratio < 1.7) {
-                    centerX = sumX / count;
-                    centerY = sumY / count;
-                    radius = Math.max(width, height) / 2;
-                    bottomY = maxY; // Bottom of the ball (actual contact point)
-                    
-                    // Calculate confidence
-                    const idealPixels = Math.PI * radius * radius;
-                    confidence = Math.min(100, (count / idealPixels) * 100);
-                    
-                    if (confidence > 30) {
-                        isValidBall = true;
-                    }
-                }
-            }
+            // Store current frame for next comparison
+            previousFrame = currentFrame;
             
-            // Update stats display
-            pxCount.innerText = count;
-            confidenceDisplay.innerText = Math.round(confidence) + '%';
-            
-            // Clear previous frame drawings
+            // Redraw video (clean slate)
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             // Draw bounce marks
             drawBounces();
-
-            // Ball tracking logic
-            if (isValidBall) {
-                lostFrames = 0;
+            
+            // Find the largest moving object (likely the ball)
+            const movingObject = findLargestMovingObject(motionData);
+            
+            if (movingObject) {
+                const { centerX, centerY, bottomY, size, motion } = movingObject;
                 
-                // Store position history (last 10 frames)
+                motionLevel.innerText = Math.round(motion);
+                
+                // Store position history
                 positionHistory.push({ 
                     x: centerX, 
                     y: centerY, 
@@ -641,25 +522,22 @@
                     positionHistory.shift();
                 }
                 
+                // Calculate velocity
                 if (lastPos) {
-                    // Calculate velocity
                     velocity.x = centerX - lastPos.x;
                     velocity.y = centerY - lastPos.y;
+                    const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
+                    speedDisplay.innerText = Math.round(speed);
                     velocityDisplay.innerText = Math.round(velocity.y);
                     
-                    // IMPROVED BOUNCE DETECTION
-                    // Look for: ball was moving down, then started moving up
-                    // This indicates a bounce happened
+                    // BOUNCE DETECTION
                     if (positionHistory.length >= 5) {
                         const recent = positionHistory.slice(-5);
                         
-                        // Check if we have a clear velocity reversal pattern
-                        let wasMovingDown = false;
-                        let isMovingUp = false;
+                        // Find the lowest point
                         let lowestIdx = -1;
                         let lowestY = -Infinity;
                         
-                        // Find the lowest point in recent history
                         for (let i = 0; i < recent.length; i++) {
                             if (recent[i].bottomY > lowestY) {
                                 lowestY = recent[i].bottomY;
@@ -667,48 +545,46 @@
                             }
                         }
                         
-                        // Check motion before and after lowest point
+                        // Check for velocity reversal at lowest point
                         if (lowestIdx > 0 && lowestIdx < recent.length - 1) {
-                            // Was moving down before lowest point
                             const beforeVel = recent[lowestIdx].y - recent[lowestIdx - 1].y;
-                            // Is moving up after lowest point
                             const afterVel = recent[recent.length - 1].y - recent[lowestIdx].y;
                             
-                            wasMovingDown = beforeVel > bounceThreshold;
-                            isMovingUp = afterVel < -bounceThreshold;
+                            const wasMovingDown = beforeVel > bounceThreshold;
+                            const isMovingUp = afterVel < -bounceThreshold;
                             
-                            // Register bounce if we detect the reversal
                             const now = Date.now();
-                            if (wasMovingDown && isMovingUp && (now - lastBounceTime > 500)) {
+                            if (wasMovingDown && isMovingUp && (now - lastBounceTime > bounceCooldown)) {
                                 const bouncePoint = recent[lowestIdx];
-                                registerBounce(bouncePoint.x, bouncePoint.bottomY);
+                                registerBounce(bouncePoint.x, bouncePoint.bottomY, speed);
                                 lastBounceTime = now;
-                                lowestPoint = null;
                             }
                         }
                     }
-                    
-                    lastPos.vy = velocity.y;
                 } else {
+                    speedDisplay.innerText = '0';
                     velocityDisplay.innerText = '0';
                 }
                 
-                lastPos = { x: centerX, y: centerY, bottomY: bottomY, vy: velocity.y };
+                lastPos = { x: centerX, y: centerY, bottomY: bottomY };
                 updateTrail(centerX, centerY);
-                drawTracker(centerX, centerY, radius, confidence);
+                
+                // Draw tracker
+                const radius = Math.sqrt(size / Math.PI);
+                drawTracker(centerX, centerY, radius, motion);
             } else {
-                // Lost tracking - show ghost tracker briefly
-                if (lostFrames < 15 && lastPos) {
-                    lostFrames++;
-                    drawTracker(lastPos.x, lastPos.y, 15, 0, true);
-                } else {
-                    lastPos = null;
+                // No object detected
+                if (positionHistory.length > 0) {
+                    // Gradually clear history
                     positionHistory = [];
-                    velocityDisplay.innerText = '0';
+                    lastPos = null;
                 }
+                motionLevel.innerText = '0';
+                speedDisplay.innerText = '0';
+                velocityDisplay.innerText = '0';
             }
 
-            // Draw motion trail
+            // Draw trail
             drawTrail();
             
             // Update FPS
@@ -717,58 +593,166 @@
             requestAnimationFrame(processFrame);
         }
 
+        // --- MOTION DETECTION ---
+        function detectMotion(prevFrame, currFrame) {
+            const prev = prevFrame.data;
+            const curr = currFrame.data;
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Create motion map
+            const motionMap = new Uint8ClampedArray(width * height);
+            
+            // Compare frames with stride for performance
+            const stride = 4; // Check every 4th pixel
+            for (let y = 0; y < height; y += stride) {
+                for (let x = 0; x < width; x += stride) {
+                    const i = (y * width + x) * 4;
+                    
+                    // Calculate difference in RGB
+                    const dr = Math.abs(curr[i] - prev[i]);
+                    const dg = Math.abs(curr[i + 1] - prev[i + 1]);
+                    const db = Math.abs(curr[i + 2] - prev[i + 2]);
+                    const diff = (dr + dg + db) / 3;
+                    
+                    if (diff > motionThreshold) {
+                        // Mark motion area (expand to nearby pixels)
+                        for (let dy = 0; dy < stride; dy++) {
+                            for (let dx = 0; dx < stride; dx++) {
+                                const nx = x + dx;
+                                const ny = y + dy;
+                                if (nx < width && ny < height) {
+                                    motionMap[ny * width + nx] = 255;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return motionMap;
+        }
+
+        // --- FIND MOVING OBJECT ---
+        function findLargestMovingObject(motionMap) {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Find connected components (blob detection)
+            const visited = new Uint8ClampedArray(width * height);
+            let largestBlob = null;
+            let maxSize = 0;
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
+                    
+                    if (motionMap[idx] > 0 && !visited[idx]) {
+                        const blob = floodFill(motionMap, visited, x, y, width, height);
+                        
+                        if (blob.size > maxSize && blob.size > minObjectSize) {
+                            maxSize = blob.size;
+                            largestBlob = blob;
+                        }
+                    }
+                }
+            }
+            
+            return largestBlob;
+        }
+
+        // --- FLOOD FILL (Blob Detection) ---
+        function floodFill(motionMap, visited, startX, startY, width, height) {
+            const stack = [[startX, startY]];
+            let minX = startX, maxX = startX;
+            let minY = startY, maxY = startY;
+            let sumX = 0, sumY = 0, count = 0;
+            
+            while (stack.length > 0) {
+                const [x, y] = stack.pop();
+                const idx = y * width + x;
+                
+                if (x < 0 || x >= width || y < 0 || y >= height) continue;
+                if (visited[idx] || motionMap[idx] === 0) continue;
+                
+                visited[idx] = 1;
+                sumX += x;
+                sumY += y;
+                count++;
+                
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                
+                // Check 4-connected neighbors
+                stack.push([x + 1, y]);
+                stack.push([x - 1, y]);
+                stack.push([x, y + 1]);
+                stack.push([x, y - 1]);
+            }
+            
+            if (count === 0) return null;
+            
+            return {
+                centerX: sumX / count,
+                centerY: sumY / count,
+                bottomY: maxY,
+                size: count,
+                motion: count,
+                bounds: { minX, maxX, minY, maxY }
+            };
+        }
+
         // --- DRAWING FUNCTIONS ---
         function drawBounces() {
             bounces.forEach((b, idx) => {
                 const size = 22;
-                const pulseSize = size + Math.sin(Date.now() / 200) * 2;
+                const age = Date.now() - b.timestamp;
+                const fadeAlpha = Math.max(0.3, 1 - (age / 10000)); // Fade over 10 seconds
                 
                 ctx.save();
                 
                 // Glow effect
-                ctx.shadowColor = "#FFFF00";
+                ctx.shadowColor = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.shadowBlur = 15;
                 
                 // Draw X mark
-                ctx.strokeStyle = "#FFFF00";
+                ctx.strokeStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
                 ctx.beginPath();
-                ctx.moveTo(b.x - pulseSize, b.y - pulseSize);
-                ctx.lineTo(b.x + pulseSize, b.y + pulseSize);
-                ctx.moveTo(b.x + pulseSize, b.y - pulseSize);
-                ctx.lineTo(b.x - pulseSize, b.y + pulseSize);
+                ctx.moveTo(b.x - size, b.y - size);
+                ctx.lineTo(b.x + size, b.y + size);
+                ctx.moveTo(b.x + size, b.y - size);
+                ctx.lineTo(b.x - size, b.y + size);
                 ctx.stroke();
                 
-                // Draw circle around it
+                // Draw circle
                 ctx.beginPath();
-                ctx.arc(b.x, b.y, pulseSize + 5, 0, Math.PI * 2);
+                ctx.arc(b.x, b.y, size + 5, 0, Math.PI * 2);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 
                 // Draw bounce number
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = "#FFFF00";
+                ctx.fillStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.font = "bold 16px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText((idx + 1).toString(), b.x, b.y - pulseSize - 12);
+                ctx.fillText((idx + 1).toString(), b.x, b.y - size - 12);
                 
                 ctx.restore();
             });
         }
 
-        function drawTracker(x, y, r, confidence, isGhost = false) {
+        function drawTracker(x, y, r, motion) {
             ctx.save();
             
-            if (isGhost) {
-                ctx.strokeStyle = "rgba(255, 165, 0, 0.5)";
-                ctx.setLineDash([5, 5]);
-            } else {
-                const alpha = Math.min(1, confidence / 100);
-                ctx.strokeStyle = `rgba(57, 255, 20, ${alpha})`;
-                ctx.shadowColor = "#39ff14";
-                ctx.shadowBlur = 8;
-            }
+            // Motion-based coloring
+            const intensity = Math.min(1, motion / 200);
+            ctx.strokeStyle = `rgba(57, 255, 20, ${intensity})`;
+            ctx.shadowColor = "#39ff14";
+            ctx.shadowBlur = 10;
             
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -776,15 +760,19 @@
             ctx.stroke();
             
             // Crosshair
-            if (!isGhost) {
-                const cross = r + 5;
-                ctx.beginPath();
-                ctx.moveTo(x - cross, y);
-                ctx.lineTo(x + cross, y);
-                ctx.moveTo(x, y - cross);
-                ctx.lineTo(x, y + cross);
-                ctx.stroke();
-            }
+            const cross = r + 8;
+            ctx.beginPath();
+            ctx.moveTo(x - cross, y);
+            ctx.lineTo(x + cross, y);
+            ctx.moveTo(x, y - cross);
+            ctx.lineTo(x, y + cross);
+            ctx.stroke();
+            
+            // Center dot
+            ctx.fillStyle = `rgba(57, 255, 20, ${intensity})`;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
             
             ctx.restore();
         }
@@ -797,10 +785,9 @@
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             
-            // Gradient trail
             for (let i = 1; i < trail.length; i++) {
                 const alpha = i / trail.length;
-                ctx.strokeStyle = `rgba(57, 255, 20, ${alpha * 0.6})`;
+                ctx.strokeStyle = `rgba(57, 255, 20, ${alpha * 0.7})`;
                 ctx.beginPath();
                 ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
                 ctx.lineTo(trail[i].x, trail[i].y);
@@ -817,12 +804,14 @@
             }
         }
 
-        function registerBounce(x, y) {
-            const timestamp = new Date();
+        function registerBounce(x, y, speed) {
+            const timestamp = Date.now();
             bounces.push({ 
                 x, 
                 y, 
-                time: timestamp,
+                time: new Date(),
+                timestamp: timestamp,
+                speed: Math.round(speed),
                 number: bounces.length + 1
             });
             bounceCountDisplay.innerText = bounces.length;
@@ -834,52 +823,7 @@
             // Haptic feedback
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             
-            console.log(`Bounce #${bounces.length} registered at (${Math.round(x)}, ${Math.round(y)})`);
-        }
-
-        // --- UTILITY FUNCTIONS ---
-        function getAverageColor(data) {
-            let r = 0, g = 0, b = 0, count = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                r += data[i];
-                g += data[i + 1];
-                b += data[i + 2];
-                count++;
-            }
-            return { 
-                r: Math.round(r / count), 
-                g: Math.round(g / count), 
-                b: Math.round(b / count) 
-            };
-        }
-
-        function rgbToHsl(r, g, b) {
-            r /= 255;
-            g /= 255;
-            b /= 255;
-            
-            const max = Math.max(r, g, b);
-            const min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-
-            if (max === min) {
-                h = s = 0;
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                
-                switch (max) {
-                    case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-                    case g: h = ((b - r) / d + 2) / 6; break;
-                    case b: h = ((r - g) / d + 4) / 6; break;
-                }
-            }
-
-            return {
-                h: Math.round(h * 360),
-                s: Math.round(s * 100),
-                l: Math.round(l * 100)
-            };
+            console.log(`Bounce #${bounces.length} at (${Math.round(x)}, ${Math.round(y)}) | Speed: ${Math.round(speed)}`);
         }
 
         function updateFPS() {
@@ -908,11 +852,11 @@
                     <div class="bounce-number">Bounce #${idx + 1}</div>
                     <div class="bounce-details">
                         Time: ${bounce.time.toLocaleTimeString()}<br>
-                        Position: (${Math.round(bounce.x)}, ${Math.round(bounce.y)})
+                        Position: (${Math.round(bounce.x)}, ${Math.round(bounce.y)})<br>
+                        Speed: ${bounce.speed} px/frame
                     </div>
                 `;
                 
-                // Click to highlight on canvas
                 item.addEventListener('click', () => {
                     highlightBounce(bounce, idx);
                 });
@@ -922,8 +866,6 @@
         }
 
         function highlightBounce(bounce, idx) {
-            // Temporarily draw a large highlight
-            const originalDraw = drawBounces;
             let highlightFrames = 30;
             
             const highlightInterval = setInterval(() => {
@@ -932,7 +874,6 @@
                     return;
                 }
                 
-                // Draw extra highlight ring
                 ctx.save();
                 const pulseScale = 1 + Math.sin(highlightFrames * 0.3) * 0.3;
                 ctx.strokeStyle = "#FF00FF";
@@ -956,20 +897,6 @@
             }
         });
 
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            isCalibrated = false;
-            bounces = [];
-            trail = [];
-            lastPos = null;
-            positionHistory = [];
-            bounceCountDisplay.innerText = '0';
-            statusText.innerText = "⚠️ NOT CALIBRATED";
-            statusText.style.color = "#ff4757";
-            instructText.innerText = "Tap on the tennis ball to start tracking";
-            calibRing.style.display = "block";
-            updateReviewPanel();
-        });
-
         document.getElementById('settings-btn').addEventListener('click', () => {
             settingsPanel.classList.add('active');
             reviewPanel.classList.remove('active');
@@ -990,24 +917,24 @@
         });
 
         // Settings controls
-        document.getElementById('hue-range').addEventListener('input', (e) => {
-            colorRange.h = parseInt(e.target.value);
-            document.getElementById('hue-val').innerText = colorRange.h + '°';
+        document.getElementById('motion-range').addEventListener('input', (e) => {
+            motionThreshold = parseInt(e.target.value);
+            document.getElementById('motion-val').innerText = motionThreshold;
         });
 
-        document.getElementById('sat-range').addEventListener('input', (e) => {
-            colorRange.s = parseInt(e.target.value);
-            document.getElementById('sat-val').innerText = colorRange.s + '%';
-        });
-
-        document.getElementById('light-range').addEventListener('input', (e) => {
-            colorRange.l = parseInt(e.target.value);
-            document.getElementById('light-val').innerText = colorRange.l + '%';
+        document.getElementById('size-range').addEventListener('input', (e) => {
+            minObjectSize = parseInt(e.target.value);
+            document.getElementById('size-val').innerText = minObjectSize;
         });
 
         document.getElementById('bounce-range').addEventListener('input', (e) => {
             bounceThreshold = parseFloat(e.target.value);
             document.getElementById('bounce-val').innerText = bounceThreshold;
+        });
+
+        document.getElementById('cooldown-range').addEventListener('input', (e) => {
+            bounceCooldown = parseInt(e.target.value);
+            document.getElementById('cooldown-val').innerText = bounceCooldown;
         });
 
         document.getElementById('trail-range').addEventListener('input', (e) => {
