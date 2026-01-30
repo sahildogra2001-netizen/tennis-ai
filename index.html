@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye Motion Tracker</title>
+    <title>Tennis Ball Tracker - Improved</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -137,6 +137,8 @@
             max-width: 350px;
             width: 90%;
             box-shadow: 0 8px 32px rgba(0,0,0,0.9);
+            max-height: 80vh;
+            overflow-y: auto;
         }
         #settings-panel.active {
             display: block;
@@ -162,6 +164,12 @@
         .setting-value {
             color: #39ff14;
             font-weight: 600;
+        }
+        .setting-description {
+            color: #666;
+            font-size: 10px;
+            margin-top: 4px;
+            font-style: italic;
         }
         input[type="range"] {
             width: 100%;
@@ -317,16 +325,16 @@
     </div>
 
     <div class="hud">
-        <div class="status" id="status-text">🎯 AUTO-TRACKING ACTIVE</div>
-        <div class="instruction" id="instruct-text">Tracking fastest moving object automatically</div>
+        <div class="status" id="status-text">🎾 BALL TRACKING ACTIVE</div>
+        <div class="instruction" id="instruct-text">Searching for tennis ball...</div>
         <div class="stats">
             <div class="stat-item">
-                <span>Motion:</span>
-                <span class="stat-value" id="motion-level">0</span>
+                <span>Size:</span>
+                <span class="stat-value" id="size-level">0</span>
             </div>
             <div class="stat-item">
-                <span>FPS:</span>
-                <span class="stat-value" id="fps-count">0</span>
+                <span>Shape:</span>
+                <span class="stat-value" id="shape-score">0.0</span>
             </div>
             <div class="stat-item">
                 <span>Speed:</span>
@@ -340,7 +348,7 @@
     </div>
 
     <div class="auto-track-indicator">
-        ✓ Motion Detection Mode
+        🎾 Ball Detection Mode
     </div>
 
     <div id="bounce-counter">
@@ -355,46 +363,68 @@
     </div>
 
     <div id="settings-panel">
-        <div class="settings-header">Motion Detection Settings</div>
+        <div class="settings-header">🎾 Ball Detection Settings</div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Motion Threshold</span>
-                <span class="setting-value" id="motion-val">20</span>
+                <span class="setting-value" id="motion-val">25</span>
             </div>
-            <input type="range" id="motion-range" min="10" max="50" value="20">
+            <input type="range" id="motion-range" min="15" max="60" value="25">
+            <div class="setting-description">How much change to consider as motion</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Min Object Size (pixels)</span>
-                <span class="setting-value" id="size-val">50</span>
+                <span>Min Ball Size (pixels)</span>
+                <span class="setting-value" id="min-size-val">30</span>
             </div>
-            <input type="range" id="size-range" min="20" max="200" value="50">
+            <input type="range" id="min-size-range" min="20" max="100" value="30">
+            <div class="setting-description">Minimum area to detect as ball</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Max Ball Size (pixels)</span>
+                <span class="setting-value" id="max-size-val">500</span>
+            </div>
+            <input type="range" id="max-size-range" min="200" max="2000" value="500">
+            <div class="setting-description">Maximum area - filters out hands/people</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Roundness Required</span>
+                <span class="setting-value" id="roundness-val">0.60</span>
+            </div>
+            <input type="range" id="roundness-range" min="0.4" max="0.9" value="0.60" step="0.05">
+            <div class="setting-description">How round object must be (balls ~1.0)</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Bounce Sensitivity</span>
-                <span class="setting-value" id="bounce-val">6</span>
+                <span class="setting-value" id="bounce-val">5</span>
             </div>
-            <input type="range" id="bounce-range" min="3" max="15" value="6" step="1">
+            <input type="range" id="bounce-range" min="3" max="15" value="5" step="1">
+            <div class="setting-description">Velocity change needed for bounce</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Bounce Cooldown (ms)</span>
-                <span class="setting-value" id="cooldown-val">600</span>
+                <span class="setting-value" id="cooldown-val">500</span>
             </div>
-            <input type="range" id="cooldown-range" min="200" max="1000" value="600" step="50">
+            <input type="range" id="cooldown-range" min="200" max="1000" value="500" step="50">
+            <div class="setting-description">Min time between bounces</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Trail Length</span>
-                <span class="setting-value" id="trail-val">25</span>
+                <span class="setting-value" id="trail-val">20</span>
             </div>
-            <input type="range" id="trail-range" min="5" max="50" value="25">
+            <input type="range" id="trail-range" min="5" max="50" value="20">
         </div>
         
         <button class="close-settings" id="close-settings">CLOSE</button>
@@ -413,8 +443,8 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const statusText = document.getElementById('status-text');
         const instructText = document.getElementById('instruct-text');
-        const motionLevel = document.getElementById('motion-level');
-        const fpsCount = document.getElementById('fps-count');
+        const sizeLevelEl = document.getElementById('size-level');
+        const shapeScoreEl = document.getElementById('shape-score');
         const speedDisplay = document.getElementById('speed-display');
         const velocityDisplay = document.getElementById('velocity-display');
         const bounceCountDisplay = document.getElementById('bounce-count');
@@ -429,19 +459,16 @@
         let lastPos = null;
         let velocity = { x: 0, y: 0 };
         let lastBounceTime = 0;
-        let maxTrailLength = 25;
-        let bounceThreshold = 6;
-        let bounceCooldown = 600;
+        let maxTrailLength = 20;
+        let bounceThreshold = 5;
+        let bounceCooldown = 500;
         
-        // Motion detection parameters
-        let motionThreshold = 20;
-        let minObjectSize = 50;
+        // IMPROVED Ball detection parameters
+        let motionThreshold = 25;
+        let minBallSize = 30;       // Minimum pixels (area)
+        let maxBallSize = 500;      // Maximum pixels (filters out hands, people)
+        let minRoundness = 0.60;    // 1.0 = perfect circle, 0.5 = very elongated
         let previousFrame = null;
-
-        // --- PERFORMANCE TRACKING ---
-        let frameCount = 0;
-        let lastFpsUpdate = Date.now();
-        let currentFps = 0;
 
         // --- CAMERA SETUP ---
         async function setupCamera() {
@@ -491,8 +518,8 @@
                 return;
             }
 
-            // MOTION DETECTION: Find areas with significant change
-            const motionData = detectMotion(previousFrame, currentFrame);
+            // MOTION DETECTION
+            const motionMap = detectMotion(previousFrame, currentFrame);
             
             // Store current frame for next comparison
             previousFrame = currentFrame;
@@ -503,13 +530,15 @@
             // Draw bounce marks
             drawBounces();
             
-            // Find the largest moving object (likely the ball)
-            const movingObject = findLargestMovingObject(motionData);
+            // Find ball-like objects (with improved filtering)
+            const ball = findBall(motionMap);
             
-            if (movingObject) {
-                const { centerX, centerY, bottomY, size, motion } = movingObject;
+            if (ball) {
+                const { centerX, centerY, bottomY, size, roundness } = ball;
                 
-                motionLevel.innerText = Math.round(motion);
+                sizeLevelEl.innerText = Math.round(size);
+                shapeScoreEl.innerText = roundness.toFixed(2);
+                instructText.innerText = "Ball locked ✓";
                 
                 // Store position history
                 positionHistory.push({ 
@@ -571,24 +600,22 @@
                 
                 // Draw tracker
                 const radius = Math.sqrt(size / Math.PI);
-                drawTracker(centerX, centerY, radius, motion);
+                drawTracker(centerX, centerY, radius, roundness);
             } else {
-                // No object detected
+                // No ball detected
                 if (positionHistory.length > 0) {
-                    // Gradually clear history
                     positionHistory = [];
                     lastPos = null;
                 }
-                motionLevel.innerText = '0';
+                sizeLevelEl.innerText = '0';
+                shapeScoreEl.innerText = '0.0';
                 speedDisplay.innerText = '0';
                 velocityDisplay.innerText = '0';
+                instructText.innerText = "Searching for tennis ball...";
             }
 
             // Draw trail
             drawTrail();
-            
-            // Update FPS
-            updateFPS();
             
             requestAnimationFrame(processFrame);
         }
@@ -600,23 +627,20 @@
             const width = canvas.width;
             const height = canvas.height;
             
-            // Create motion map
             const motionMap = new Uint8ClampedArray(width * height);
             
-            // Compare frames with stride for performance
-            const stride = 4; // Check every 4th pixel
+            const stride = 3; // Sample every 3rd pixel for performance
             for (let y = 0; y < height; y += stride) {
                 for (let x = 0; x < width; x += stride) {
                     const i = (y * width + x) * 4;
                     
-                    // Calculate difference in RGB
                     const dr = Math.abs(curr[i] - prev[i]);
                     const dg = Math.abs(curr[i + 1] - prev[i + 1]);
                     const db = Math.abs(curr[i + 2] - prev[i + 2]);
                     const diff = (dr + dg + db) / 3;
                     
                     if (diff > motionThreshold) {
-                        // Mark motion area (expand to nearby pixels)
+                        // Fill in the strided area
                         for (let dy = 0; dy < stride; dy++) {
                             for (let dx = 0; dx < stride; dx++) {
                                 const nx = x + dx;
@@ -633,57 +657,58 @@
             return motionMap;
         }
 
-        // --- FIND MOVING OBJECT ---
-// REPLACE THE OLD findLargestMovingObject FUNCTION WITH THIS:
-
-function findLargestMovingObject(motionMap) {
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    // Find connected components (blob detection)
-    const visited = new Uint8ClampedArray(width * height);
-    let bestBlob = null;
-    let maxScore = 0; // We will score objects based on how "ball-like" they are
-
-    // SETTINGS FOR BALL DETECTION
-    const MIN_SIZE = 20;   // Ignore tiny noise/flies
-    const MAX_SIZE = 400;  // CRITICAL: Ignore cars, people, and doors (pixels area)
-    const MIN_RATIO = 0.6; // Balls are roughly 1:1 width/height
-    const MAX_RATIO = 1.6; // Ignore long skinny things (arms, bats)
-
-    for (let y = 0; y < height; y += 2) { // Skip pixels for speed
-        for (let x = 0; x < width; x += 2) {
-            const idx = y * width + x;
+        // --- FIND BALL (IMPROVED) ---
+        function findBall(motionMap) {
+            const width = canvas.width;
+            const height = canvas.height;
             
-            if (motionMap[idx] > 0 && !visited[idx]) {
-                const blob = floodFill(motionMap, visited, x, y, width, height);
-                
-                if (!blob) continue;
+            const visited = new Uint8ClampedArray(width * height);
+            let bestBall = null;
+            let bestScore = 0;
 
-                // --- 1. SIZE FILTER ---
-                // If it's too huge (a car/person) or too small (noise), SKIP IT
-                if (blob.size < MIN_SIZE || blob.size > MAX_SIZE) continue;
+            for (let y = 0; y < height; y += 2) {
+                for (let x = 0; x < width; x += 2) {
+                    const idx = y * width + x;
+                    
+                    if (motionMap[idx] > 0 && !visited[idx]) {
+                        const blob = floodFill(motionMap, visited, x, y, width, height);
+                        
+                        if (!blob) continue;
 
-                // --- 2. SHAPE FILTER (Aspect Ratio) ---
-                const blobWidth = blob.bounds.maxX - blob.bounds.minX;
-                const blobHeight = blob.bounds.maxY - blob.bounds.minY;
-                const ratio = blobWidth / blobHeight;
+                        // --- FILTER 1: SIZE ---
+                        if (blob.size < minBallSize || blob.size > maxBallSize) continue;
 
-                // A ball fits in a square (ratio ~1.0). 
-                // A person is tall (ratio < 0.5). A car is wide (ratio > 2.0).
-                if (ratio < MIN_RATIO || ratio > MAX_RATIO) continue;
+                        // --- FILTER 2: ROUNDNESS (Aspect Ratio) ---
+                        const blobWidth = blob.bounds.maxX - blob.bounds.minX;
+                        const blobHeight = blob.bounds.maxY - blob.bounds.minY;
+                        const aspectRatio = Math.min(blobWidth, blobHeight) / Math.max(blobWidth, blobHeight);
+                        
+                        if (aspectRatio < minRoundness) continue;
 
-                // If it passes the filters, we pick the largest of the VALID objects
-                if (blob.size > maxScore) {
-                    maxScore = blob.size;
-                    bestBlob = blob;
+                        // --- FILTER 3: COMPACTNESS (How much area vs bounding box) ---
+                        const boundingBoxArea = blobWidth * blobHeight;
+                        const compactness = blob.size / boundingBoxArea;
+                        
+                        // A circle has compactness ~0.785 (π/4)
+                        // Very irregular shapes have low compactness
+                        if (compactness < 0.4) continue;
+
+                        // --- SCORING: Prefer rounder, more compact objects ---
+                        const score = blob.size * aspectRatio * compactness;
+                        
+                        if (score > bestScore) {
+                            bestScore = score;
+                            blob.roundness = aspectRatio;
+                            blob.compactness = compactness;
+                            bestBall = blob;
+                        }
+                    }
                 }
             }
+            
+            return bestBall;
         }
-    }
-    
-    return bestBlob;
-}
+
         // --- FLOOD FILL (Blob Detection) ---
         function floodFill(motionMap, visited, startX, startY, width, height) {
             const stack = [[startX, startY]];
@@ -708,7 +733,6 @@ function findLargestMovingObject(motionMap) {
                 minY = Math.min(minY, y);
                 maxY = Math.max(maxY, y);
                 
-                // Check 4-connected neighbors
                 stack.push([x + 1, y]);
                 stack.push([x - 1, y]);
                 stack.push([x, y + 1]);
@@ -722,7 +746,6 @@ function findLargestMovingObject(motionMap) {
                 centerY: sumY / count,
                 bottomY: maxY,
                 size: count,
-                motion: count,
                 bounds: { minX, maxX, minY, maxY }
             };
         }
@@ -732,15 +755,13 @@ function findLargestMovingObject(motionMap) {
             bounces.forEach((b, idx) => {
                 const size = 22;
                 const age = Date.now() - b.timestamp;
-                const fadeAlpha = Math.max(0.3, 1 - (age / 10000)); // Fade over 10 seconds
+                const fadeAlpha = Math.max(0.3, 1 - (age / 10000));
                 
                 ctx.save();
                 
-                // Glow effect
                 ctx.shadowColor = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.shadowBlur = 15;
                 
-                // Draw X mark
                 ctx.strokeStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
@@ -751,13 +772,11 @@ function findLargestMovingObject(motionMap) {
                 ctx.lineTo(b.x - size, b.y + size);
                 ctx.stroke();
                 
-                // Draw circle
                 ctx.beginPath();
                 ctx.arc(b.x, b.y, size + 5, 0, Math.PI * 2);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 
-                // Draw bounce number
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.font = "bold 16px sans-serif";
@@ -768,11 +787,11 @@ function findLargestMovingObject(motionMap) {
             });
         }
 
-        function drawTracker(x, y, r, motion) {
+        function drawTracker(x, y, r, roundness) {
             ctx.save();
             
-            // Motion-based coloring
-            const intensity = Math.min(1, motion / 200);
+            // Color based on roundness (green = round/ball-like)
+            const intensity = Math.min(1, roundness / 0.8);
             ctx.strokeStyle = `rgba(57, 255, 20, ${intensity})`;
             ctx.shadowColor = "#39ff14";
             ctx.shadowBlur = 10;
@@ -783,7 +802,7 @@ function findLargestMovingObject(motionMap) {
             ctx.stroke();
             
             // Crosshair
-            const cross = r + 8;
+            const cross = r + 10;
             ctx.beginPath();
             ctx.moveTo(x - cross, y);
             ctx.lineTo(x + cross, y);
@@ -839,25 +858,12 @@ function findLargestMovingObject(motionMap) {
             });
             bounceCountDisplay.innerText = bounces.length;
             
-            // Visual feedback
             bounceCountDisplay.classList.add('new-bounce');
             setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 300);
             
-            // Haptic feedback
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             
             console.log(`Bounce #${bounces.length} at (${Math.round(x)}, ${Math.round(y)}) | Speed: ${Math.round(speed)}`);
-        }
-
-        function updateFPS() {
-            frameCount++;
-            const now = Date.now();
-            if (now - lastFpsUpdate >= 1000) {
-                currentFps = frameCount;
-                fpsCount.innerText = currentFps;
-                frameCount = 0;
-                lastFpsUpdate = now;
-            }
         }
 
         function updateReviewPanel() {
@@ -945,9 +951,19 @@ function findLargestMovingObject(motionMap) {
             document.getElementById('motion-val').innerText = motionThreshold;
         });
 
-        document.getElementById('size-range').addEventListener('input', (e) => {
-            minObjectSize = parseInt(e.target.value);
-            document.getElementById('size-val').innerText = minObjectSize;
+        document.getElementById('min-size-range').addEventListener('input', (e) => {
+            minBallSize = parseInt(e.target.value);
+            document.getElementById('min-size-val').innerText = minBallSize;
+        });
+
+        document.getElementById('max-size-range').addEventListener('input', (e) => {
+            maxBallSize = parseInt(e.target.value);
+            document.getElementById('max-size-val').innerText = maxBallSize;
+        });
+
+        document.getElementById('roundness-range').addEventListener('input', (e) => {
+            minRoundness = parseFloat(e.target.value);
+            document.getElementById('roundness-val').innerText = minRoundness.toFixed(2);
         });
 
         document.getElementById('bounce-range').addEventListener('input', (e) => {
