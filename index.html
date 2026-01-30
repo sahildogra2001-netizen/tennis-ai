@@ -406,544 +406,302 @@
         <button class="close-review" id="close-review">CLOSE</button>
     </div>
 
-    <script>
-        // DOM Elements
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const statusText = document.getElementById('status-text');
-        const instructText = document.getElementById('instruct-text');
-        const motionLevel = document.getElementById('motion-level');
-        const fpsCount = document.getElementById('fps-count');
-        const speedDisplay = document.getElementById('speed-display');
-        const velocityDisplay = document.getElementById('velocity-display');
-        const bounceCountDisplay = document.getElementById('bounce-count');
-        const settingsPanel = document.getElementById('settings-panel');
-        const reviewPanel = document.getElementById('review-panel');
-        const bounceList = document.getElementById('bounce-list');
+<script>
+/* ==========================
+   DOM
+========================== */
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-        // --- TRACKING STATE ---
-        let bounces = [];
-        let trail = [];
-        let positionHistory = [];
-        let lastPos = null;
-        let velocity = { x: 0, y: 0 };
-        let lastBounceTime = 0;
-        let maxTrailLength = 25;
-        let bounceThreshold = 6;
-        let bounceCooldown = 600;
-        
-        // Motion detection parameters
-        let motionThreshold = 20;
-        let minObjectSize = 50;
-        let previousFrame = null;
+const motionLevel = document.getElementById('motion-level');
+const fpsCount = document.getElementById('fps-count');
+const speedDisplay = document.getElementById('speed-display');
+const velocityDisplay = document.getElementById('velocity-display');
+const bounceCountDisplay = document.getElementById('bounce-count');
+const settingsPanel = document.getElementById('settings-panel');
+const reviewPanel = document.getElementById('review-panel');
+const bounceList = document.getElementById('bounce-list');
 
-        // --- PERFORMANCE TRACKING ---
-        let frameCount = 0;
-        let lastFpsUpdate = Date.now();
-        let currentFps = 0;
+/* ==========================
+   TENNIS MODEL
+========================== */
+const TENNIS_MIN_RADIUS = 6;
+const TENNIS_MAX_RADIUS = 18;
+const MIN_TENNIS_SPEED = 5;
+const REQUIRED_STABLE_FRAMES = 3;
 
-        // --- CAMERA SETUP ---
-        async function setupCamera() {
-            try {
-                const constraints = {
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                
-                video.onloadedmetadata = () => {
-                    const videoAspect = video.videoWidth / video.videoHeight;
-                    const windowAspect = window.innerWidth / window.innerHeight;
-                    
-                    if (videoAspect > windowAspect) {
-                        canvas.width = window.innerWidth;
-                        canvas.height = window.innerWidth / videoAspect;
-                    } else {
-                        canvas.height = window.innerHeight;
-                        canvas.width = window.innerHeight * videoAspect;
-                    }
-                    
-                    requestAnimationFrame(processFrame);
-                };
-            } catch (e) {
-                alert("Camera Error: " + e.message + "\n\nPlease allow camera access.");
-            }
-        }
+/* ==========================
+   STATE
+========================== */
+let previousFrame = null;
+let lastPos = null;
+let lastVelocityY = 0;
+let tennisConfidence = 0;
 
-        // --- MAIN PROCESSING LOOP ---
-        function processFrame() {
-            // Draw video frame
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Get current frame data
-            const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            if (!previousFrame) {
-                previousFrame = currentFrame;
-                requestAnimationFrame(processFrame);
-                return;
-            }
+let trail = [];
+let bounces = [];
+let lastBounceTime = 0;
 
-            // MOTION DETECTION: Find areas with significant change
-            const motionData = detectMotion(previousFrame, currentFrame);
-            
-            // Store current frame for next comparison
-            previousFrame = currentFrame;
-            
-            // Redraw video (clean slate)
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Draw bounce marks
-            drawBounces();
-            
-            // Find the largest moving object (likely the ball)
-            const movingObject = findLargestMovingObject(motionData);
-            
-            if (movingObject) {
-                const { centerX, centerY, bottomY, size, motion } = movingObject;
-                
-                motionLevel.innerText = Math.round(motion);
-                
-                // Store position history
-                positionHistory.push({ 
-                    x: centerX, 
-                    y: centerY, 
-                    bottomY: bottomY,
-                    timestamp: Date.now() 
-                });
-                if (positionHistory.length > 10) {
-                    positionHistory.shift();
-                }
-                
-                // Calculate velocity
-                if (lastPos) {
-                    velocity.x = centerX - lastPos.x;
-                    velocity.y = centerY - lastPos.y;
-                    const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
-                    speedDisplay.innerText = Math.round(speed);
-                    velocityDisplay.innerText = Math.round(velocity.y);
-                    
-                    // BOUNCE DETECTION
-                    if (positionHistory.length >= 5) {
-                        const recent = positionHistory.slice(-5);
-                        
-                        // Find the lowest point
-                        let lowestIdx = -1;
-                        let lowestY = -Infinity;
-                        
-                        for (let i = 0; i < recent.length; i++) {
-                            if (recent[i].bottomY > lowestY) {
-                                lowestY = recent[i].bottomY;
-                                lowestIdx = i;
-                            }
-                        }
-                        
-                        // Check for velocity reversal at lowest point
-                        if (lowestIdx > 0 && lowestIdx < recent.length - 1) {
-                            const beforeVel = recent[lowestIdx].y - recent[lowestIdx - 1].y;
-                            const afterVel = recent[recent.length - 1].y - recent[lowestIdx].y;
-                            
-                            const wasMovingDown = beforeVel > bounceThreshold;
-                            const isMovingUp = afterVel < -bounceThreshold;
-                            
-                            const now = Date.now();
-                            if (wasMovingDown && isMovingUp && (now - lastBounceTime > bounceCooldown)) {
-                                const bouncePoint = recent[lowestIdx];
-                                registerBounce(bouncePoint.x, bouncePoint.bottomY, speed);
-                                lastBounceTime = now;
-                            }
-                        }
-                    }
-                } else {
-                    speedDisplay.innerText = '0';
-                    velocityDisplay.innerText = '0';
-                }
-                
-                lastPos = { x: centerX, y: centerY, bottomY: bottomY };
-                updateTrail(centerX, centerY);
-                
-                // Draw tracker
-                const radius = Math.sqrt(size / Math.PI);
-                drawTracker(centerX, centerY, radius, motion);
-            } else {
-                // No object detected
-                if (positionHistory.length > 0) {
-                    // Gradually clear history
-                    positionHistory = [];
-                    lastPos = null;
-                }
-                motionLevel.innerText = '0';
-                speedDisplay.innerText = '0';
-                velocityDisplay.innerText = '0';
-            }
+let velocity = { x: 0, y: 0 };
+let positionHistory = [];
 
-            // Draw trail
-            drawTrail();
-            
-            // Update FPS
-            updateFPS();
-            
+let maxTrailLength = 25;
+let bounceThreshold = 6;
+let bounceCooldown = 600;
+
+let motionThreshold = 20;
+let minObjectSize = 50;
+
+/* ==========================
+   FPS
+========================== */
+let frameCount = 0;
+let lastFpsUpdate = Date.now();
+
+/* ==========================
+   CAMERA
+========================== */
+async function setupCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: 1280, height: 720 },
+        audio: false
+    });
+
+    video.srcObject = stream;
+
+    video.onloadedmetadata = () => {
+        const ar = video.videoWidth / video.videoHeight;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerWidth / ar;
+        requestAnimationFrame(processFrame);
+    };
+}
+
+/* ==========================
+   MAIN LOOP
+========================== */
+function processFrame() {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const curr = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    if (!previousFrame) {
+        previousFrame = curr;
+        requestAnimationFrame(processFrame);
+        return;
+    }
+
+    const motionMap = detectMotion(previousFrame, curr);
+    previousFrame = curr;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    drawBounces();
+
+    const ball = findTennisBall(motionMap);
+
+    if (!ball) {
+        tennisConfidence = 0;
+        trail = [];
+        lastPos = null;
+        motionLevel.innerText = 0;
+        speedDisplay.innerText = 0;
+        velocityDisplay.innerText = 0;
+        updateFPS();
+        requestAnimationFrame(processFrame);
+        return;
+    }
+
+    tennisConfidence++;
+    if (tennisConfidence < REQUIRED_STABLE_FRAMES) {
+        requestAnimationFrame(processFrame);
+        return;
+    }
+
+    const { centerX, centerY, bottomY, size } = ball;
+    motionLevel.innerText = Math.round(size);
+
+    if (lastPos) {
+        velocity.x = centerX - lastPos.x;
+        velocity.y = centerY - lastPos.y;
+
+        const speed = Math.hypot(velocity.x, velocity.y);
+
+        if (speed < MIN_TENNIS_SPEED) {
             requestAnimationFrame(processFrame);
+            return;
         }
 
-        // --- MOTION DETECTION ---
-        function detectMotion(prevFrame, currFrame) {
-            const prev = prevFrame.data;
-            const curr = currFrame.data;
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // Create motion map
-            const motionMap = new Uint8ClampedArray(width * height);
-            
-            // Compare frames with stride for performance
-            const stride = 4; // Check every 4th pixel
-            for (let y = 0; y < height; y += stride) {
-                for (let x = 0; x < width; x += stride) {
-                    const i = (y * width + x) * 4;
-                    
-                    // Calculate difference in RGB
-                    const dr = Math.abs(curr[i] - prev[i]);
-                    const dg = Math.abs(curr[i + 1] - prev[i + 1]);
-                    const db = Math.abs(curr[i + 2] - prev[i + 2]);
-                    const diff = (dr + dg + db) / 3;
-                    
-                    if (diff > motionThreshold) {
-                        // Mark motion area (expand to nearby pixels)
-                        for (let dy = 0; dy < stride; dy++) {
-                            for (let dx = 0; dx < stride; dx++) {
-                                const nx = x + dx;
-                                const ny = y + dy;
-                                if (nx < width && ny < height) {
-                                    motionMap[ny * width + nx] = 255;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            return motionMap;
+        speedDisplay.innerText = Math.round(speed);
+        velocityDisplay.innerText = Math.round(velocity.y);
+
+        // Tennis bounce: downward → upward near court
+        if (
+            lastVelocityY > bounceThreshold &&
+            velocity.y < -bounceThreshold &&
+            Date.now() - lastBounceTime > bounceCooldown &&
+            bottomY > canvas.height * 0.55
+        ) {
+            registerBounce(centerX, bottomY, speed);
+            lastBounceTime = Date.now();
         }
 
-        // --- FIND MOVING OBJECT ---
-        function findLargestMovingObject(motionMap) {
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // Find connected components (blob detection)
-            const visited = new Uint8ClampedArray(width * height);
-            let largestBlob = null;
-            let maxSize = 0;
-            
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    const idx = y * width + x;
-                    
-                    if (motionMap[idx] > 0 && !visited[idx]) {
-                        const blob = floodFill(motionMap, visited, x, y, width, height);
-                        
-                        if (blob.size > maxSize && blob.size > minObjectSize) {
-                            maxSize = blob.size;
-                            largestBlob = blob;
-                        }
-                    }
-                }
-            }
-            
-            return largestBlob;
+        // Only ballistic motion gets a trail
+        if (Math.abs(velocity.y) > 2 && Math.abs(velocity.x) < 40) {
+            trail.push({ x: centerX, y: centerY });
+            if (trail.length > maxTrailLength) trail.shift();
         }
 
-        // --- FLOOD FILL (Blob Detection) ---
-        function floodFill(motionMap, visited, startX, startY, width, height) {
-            const stack = [[startX, startY]];
-            let minX = startX, maxX = startX;
-            let minY = startY, maxY = startY;
-            let sumX = 0, sumY = 0, count = 0;
-            
-            while (stack.length > 0) {
-                const [x, y] = stack.pop();
-                const idx = y * width + x;
-                
-                if (x < 0 || x >= width || y < 0 || y >= height) continue;
-                if (visited[idx] || motionMap[idx] === 0) continue;
-                
-                visited[idx] = 1;
-                sumX += x;
-                sumY += y;
-                count++;
-                
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
-                
-                // Check 4-connected neighbors
-                stack.push([x + 1, y]);
-                stack.push([x - 1, y]);
-                stack.push([x, y + 1]);
-                stack.push([x, y - 1]);
-            }
-            
-            if (count === 0) return null;
-            
-            return {
-                centerX: sumX / count,
-                centerY: sumY / count,
-                bottomY: maxY,
-                size: count,
-                motion: count,
-                bounds: { minX, maxX, minY, maxY }
-            };
-        }
+        lastVelocityY = velocity.y;
+    }
 
-        // --- DRAWING FUNCTIONS ---
-        function drawBounces() {
-            bounces.forEach((b, idx) => {
-                const size = 22;
-                const age = Date.now() - b.timestamp;
-                const fadeAlpha = Math.max(0.3, 1 - (age / 10000)); // Fade over 10 seconds
-                
-                ctx.save();
-                
-                // Glow effect
-                ctx.shadowColor = `rgba(255, 255, 0, ${fadeAlpha})`;
-                ctx.shadowBlur = 15;
-                
-                // Draw X mark
-                ctx.strokeStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
-                ctx.lineWidth = 5;
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                ctx.moveTo(b.x - size, b.y - size);
-                ctx.lineTo(b.x + size, b.y + size);
-                ctx.moveTo(b.x + size, b.y - size);
-                ctx.lineTo(b.x - size, b.y + size);
-                ctx.stroke();
-                
-                // Draw circle
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, size + 5, 0, Math.PI * 2);
-                ctx.lineWidth = 3;
-                ctx.stroke();
-                
-                // Draw bounce number
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
-                ctx.font = "bold 16px sans-serif";
-                ctx.textAlign = "center";
-                ctx.fillText((idx + 1).toString(), b.x, b.y - size - 12);
-                
-                ctx.restore();
-            });
-        }
+    lastPos = { x: centerX, y: centerY };
+    drawTrail();
+    drawTracker(centerX, centerY, Math.sqrt(size / Math.PI));
 
-        function drawTracker(x, y, r, motion) {
-            ctx.save();
-            
-            // Motion-based coloring
-            const intensity = Math.min(1, motion / 200);
-            ctx.strokeStyle = `rgba(57, 255, 20, ${intensity})`;
-            ctx.shadowColor = "#39ff14";
-            ctx.shadowBlur = 10;
-            
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.stroke();
-            
-            // Crosshair
-            const cross = r + 8;
-            ctx.beginPath();
-            ctx.moveTo(x - cross, y);
-            ctx.lineTo(x + cross, y);
-            ctx.moveTo(x, y - cross);
-            ctx.lineTo(x, y + cross);
-            ctx.stroke();
-            
-            // Center dot
-            ctx.fillStyle = `rgba(57, 255, 20, ${intensity})`;
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.restore();
-        }
+    updateFPS();
+    requestAnimationFrame(processFrame);
+}
 
-        function drawTrail() {
-            if (trail.length < 2) return;
-            
-            ctx.save();
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            
-            for (let i = 1; i < trail.length; i++) {
-                const alpha = i / trail.length;
-                ctx.strokeStyle = `rgba(57, 255, 20, ${alpha * 0.7})`;
-                ctx.beginPath();
-                ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
-                ctx.lineTo(trail[i].x, trail[i].y);
-                ctx.stroke();
-            }
-            
-            ctx.restore();
-        }
+/* ==========================
+   MOTION DETECTION
+========================== */
+function detectMotion(prev, curr) {
+    const p = prev.data, c = curr.data;
+    const map = new Uint8ClampedArray(canvas.width * canvas.height);
+    const stride = 4;
 
-        function updateTrail(x, y) {
-            trail.push({ x, y });
-            if (trail.length > maxTrailLength) {
-                trail.shift();
+    for (let y = 0; y < canvas.height; y += stride) {
+        for (let x = 0; x < canvas.width; x += stride) {
+            const i = (y * canvas.width + x) * 4;
+            const diff = (
+                Math.abs(c[i] - p[i]) +
+                Math.abs(c[i + 1] - p[i + 1]) +
+                Math.abs(c[i + 2] - p[i + 2])
+            ) / 3;
+
+            if (diff > motionThreshold) {
+                map[y * canvas.width + x] = 255;
             }
         }
+    }
+    return map;
+}
 
-        function registerBounce(x, y, speed) {
-            const timestamp = Date.now();
-            bounces.push({ 
-                x, 
-                y, 
-                time: new Date(),
-                timestamp: timestamp,
-                speed: Math.round(speed),
-                number: bounces.length + 1
-            });
-            bounceCountDisplay.innerText = bounces.length;
-            
-            // Visual feedback
-            bounceCountDisplay.classList.add('new-bounce');
-            setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 300);
-            
-            // Haptic feedback
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-            
-            console.log(`Bounce #${bounces.length} at (${Math.round(x)}, ${Math.round(y)}) | Speed: ${Math.round(speed)}`);
+/* ==========================
+   BALL DETECTION
+========================== */
+function findTennisBall(map) {
+    const visited = new Uint8ClampedArray(map.length);
+    let best = null;
+
+    for (let i = 0; i < map.length; i++) {
+        if (map[i] && !visited[i]) {
+            const blob = floodFill(map, visited, i % canvas.width, Math.floor(i / canvas.width));
+            if (!blob) continue;
+
+            const r = Math.sqrt(blob.size / Math.PI);
+            const ar = (blob.bounds.maxX - blob.bounds.minX) /
+                       (blob.bounds.maxY - blob.bounds.minY);
+
+            if (
+                r < TENNIS_MIN_RADIUS ||
+                r > TENNIS_MAX_RADIUS ||
+                ar < 0.75 || ar > 1.3
+            ) continue;
+
+            if (!best || blob.size > best.size) best = blob;
         }
+    }
+    return best;
+}
 
-        function updateFPS() {
-            frameCount++;
-            const now = Date.now();
-            if (now - lastFpsUpdate >= 1000) {
-                currentFps = frameCount;
-                fpsCount.innerText = currentFps;
-                frameCount = 0;
-                lastFpsUpdate = now;
-            }
-        }
+function floodFill(map, visited, sx, sy) {
+    const stack = [[sx, sy]];
+    let minX = sx, maxX = sx, minY = sy, maxY = sy;
+    let sumX = 0, sumY = 0, count = 0;
 
-        function updateReviewPanel() {
-            bounceList.innerHTML = '';
-            
-            if (bounces.length === 0) {
-                bounceList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No bounces recorded yet</p>';
-                return;
-            }
-            
-            bounces.forEach((bounce, idx) => {
-                const item = document.createElement('div');
-                item.className = 'bounce-item';
-                item.innerHTML = `
-                    <div class="bounce-number">Bounce #${idx + 1}</div>
-                    <div class="bounce-details">
-                        Time: ${bounce.time.toLocaleTimeString()}<br>
-                        Position: (${Math.round(bounce.x)}, ${Math.round(bounce.y)})<br>
-                        Speed: ${bounce.speed} px/frame
-                    </div>
-                `;
-                
-                item.addEventListener('click', () => {
-                    highlightBounce(bounce, idx);
-                });
-                
-                bounceList.appendChild(item);
-            });
-        }
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        const idx = y * canvas.width + x;
+        if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+        if (visited[idx] || !map[idx]) continue;
 
-        function highlightBounce(bounce, idx) {
-            let highlightFrames = 30;
-            
-            const highlightInterval = setInterval(() => {
-                if (highlightFrames-- <= 0) {
-                    clearInterval(highlightInterval);
-                    return;
-                }
-                
-                ctx.save();
-                const pulseScale = 1 + Math.sin(highlightFrames * 0.3) * 0.3;
-                ctx.strokeStyle = "#FF00FF";
-                ctx.lineWidth = 6;
-                ctx.shadowColor = "#FF00FF";
-                ctx.shadowBlur = 20;
-                ctx.beginPath();
-                ctx.arc(bounce.x, bounce.y, 40 * pulseScale, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.restore();
-            }, 50);
-        }
+        visited[idx] = 1;
+        sumX += x; sumY += y; count++;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
 
-        // --- CONTROLS ---
-        document.getElementById('clear-btn').addEventListener('click', () => {
-            if (confirm('Clear all bounces? This cannot be undone.')) {
-                bounces = [];
-                trail = [];
-                bounceCountDisplay.innerText = '0';
-                updateReviewPanel();
-            }
-        });
+        stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+    }
 
-        document.getElementById('settings-btn').addEventListener('click', () => {
-            settingsPanel.classList.add('active');
-            reviewPanel.classList.remove('active');
-        });
+    return {
+        centerX: sumX / count,
+        centerY: sumY / count,
+        bottomY: maxY,
+        size: count,
+        bounds: { minX, maxX, minY, maxY }
+    };
+}
 
-        document.getElementById('close-settings').addEventListener('click', () => {
-            settingsPanel.classList.remove('active');
-        });
+/* ==========================
+   DRAWING
+========================== */
+function drawTracker(x, y, r) {
+    ctx.strokeStyle = "#39ff14";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+}
 
-        document.getElementById('review-btn').addEventListener('click', () => {
-            updateReviewPanel();
-            reviewPanel.classList.add('active');
-            settingsPanel.classList.remove('active');
-        });
+function drawTrail() {
+    for (let i = 1; i < trail.length; i++) {
+        ctx.strokeStyle = `rgba(57,255,20,${i/trail.length})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(trail[i-1].x, trail[i-1].y);
+        ctx.lineTo(trail[i].x, trail[i].y);
+        ctx.stroke();
+    }
+}
 
-        document.getElementById('close-review').addEventListener('click', () => {
-            reviewPanel.classList.remove('active');
-        });
+function drawBounces() {
+    bounces.forEach((b, i) => {
+        ctx.strokeStyle = "#FFFF00";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 22, 0, Math.PI*2);
+        ctx.stroke();
+    });
+}
 
-        // Settings controls
-        document.getElementById('motion-range').addEventListener('input', (e) => {
-            motionThreshold = parseInt(e.target.value);
-            document.getElementById('motion-val').innerText = motionThreshold;
-        });
+/* ==========================
+   BOUNCE
+========================== */
+function registerBounce(x, y, speed) {
+    bounces.push({ x, y, speed, time: new Date() });
+    bounceCountDisplay.innerText = bounces.length;
+    if (navigator.vibrate) navigator.vibrate(100);
+}
 
-        document.getElementById('size-range').addEventListener('input', (e) => {
-            minObjectSize = parseInt(e.target.value);
-            document.getElementById('size-val').innerText = minObjectSize;
-        });
+/* ==========================
+   FPS
+========================== */
+function updateFPS() {
+    frameCount++;
+    const now = Date.now();
+    if (now - lastFpsUpdate > 1000) {
+        fpsCount.innerText = frameCount;
+        frameCount = 0;
+        lastFpsUpdate = now;
+    }
+}
 
-        document.getElementById('bounce-range').addEventListener('input', (e) => {
-            bounceThreshold = parseFloat(e.target.value);
-            document.getElementById('bounce-val').innerText = bounceThreshold;
-        });
+/* ==========================
+   START
+========================== */
+setupCamera();
+</script>
 
-        document.getElementById('cooldown-range').addEventListener('input', (e) => {
-            bounceCooldown = parseInt(e.target.value);
-            document.getElementById('cooldown-val').innerText = bounceCooldown;
-        });
-
-        document.getElementById('trail-range').addEventListener('input', (e) => {
-            maxTrailLength = parseInt(e.target.value);
-            document.getElementById('trail-val').innerText = maxTrailLength;
-        });
-
-        // Initialize
-        setupCamera();
-    </script>
 </body>
 </html>
