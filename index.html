@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro-Court Tennis Tracker (Final)</title>
+    <title>Hawk-Eye Tennis Tracker</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -21,20 +21,20 @@
             background: rgba(0, 0, 0, 0.85); padding: 12px; border-radius: 8px;
             border-left: 5px solid #39ff14; pointer-events: none;
             box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
-            min-width: 140px;
+            min-width: 130px;
         }
         .stat-row { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; margin-bottom: 5px; }
         .label { color: #aaa; font-weight: bold; } 
         .value { color: #fff; font-weight: bold; }
         
-        /* Fullscreen Video & Canvas Overlay */
+        /* Fullscreen Video & Canvas */
         video, canvas { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             object-fit: cover; 
         }
         canvas { z-index: 10; }
         
-        /* Loading Screen Styling */
+        /* Loading Screen */
         .loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #111; z-index: 100; display: flex; flex-direction: column;
@@ -45,12 +45,24 @@
             border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Clear Button */
+        .btn-clear {
+            position: absolute; bottom: 30px; z-index: 50;
+            background: #ff4757; color: white; border: none;
+            padding: 15px 30px; border-radius: 30px;
+            font-size: 16px; font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-transform: uppercase; letter-spacing: 1px;
+            cursor: pointer;
+        }
+        .btn-clear:active { transform: scale(0.95); background: #e84118; }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <div class="stat-row"><span class="label">ENGINE</span> <span class="value" style="color:#f1c40f">TURBO V4</span></div>
+        <div class="stat-row"><span class="label">SYSTEM</span> <span class="value" style="color:#f1c40f">HAWK-EYE</span></div>
         <div class="stat-row"><span class="label">FPS</span> <span class="value" id="fps">0</span></div>
         <div class="stat-row"><span class="label">STATUS</span> <span class="value" id="confidence" style="color:#777">INIT...</span></div>
         <div class="stat-row"><span class="label">SPEED</span> <span class="value" id="speed-val">0 px/f</span></div>
@@ -59,11 +71,13 @@
     <div class="loading-screen" id="loader">
         <div class="spinner"></div>
         <div style="color:#39ff14; font-size: 1.2em; font-weight:bold; letter-spacing: 1px;">INITIALIZING VISION</div>
-        <div style="color:#888; font-size:0.8em; margin-top:10px;">Loading Neural Network (Lite Model)...</div>
+        <div style="color:#888; font-size:0.8em; margin-top:10px;">Loading Lite Model (Turbo Mode)...</div>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
+
+    <button class="btn-clear" onclick="clearBounces()">Clear Marks</button>
 
     <script>
         const video = document.getElementById('video');
@@ -77,27 +91,32 @@
         let model = null;
         let lastTime = 0;
         
-        // --- PHYSICS ENGINE VARIABLES ---
+        // --- DATA RECORDING ---
+        let bounces = [];         // Stores where the ball hit
+        let lastVelocityY = 0;    // To detect direction changes
+        
+        // --- PHYSICS VARIABLES ---
         let trail = [];
         let lastPos = null;       
         let velocity = {x: 0, y: 0}; 
-        let speedMagnitude = 0;   // Current speed of the ball
+        let speedMagnitude = 0;   
         let lostFrames = 0;       
         let isLocked = false;     
         
-        // --- TUNING CONSTANTS ---
-        const MAX_COAST = 25;           // How long to predict if lost (frames)
-        const GRAVITY = 0.6;            // Gravity force
-        const IMPACT_SPEED_THRESHOLD = 12; // If falling faster than this, assume bounce
-        const MIN_SPEED_FOR_BOOST = 8;  // Speed required to trigger confidence boost
+        // --- CONSTANTS ---
+        const GRAVITY = 0.6;            
+        const IMPACT_SPEED_THRESHOLD = 12; // Speed required to "guess" a bounce if lost
+        const BOUNCE_COOLDOWN = 15;        // Frames between bounces (prevents double counting)
+        const MIN_SPEED_FOR_BOOST = 8;     // Speed boost threshold
+        let framesSinceBounce = 0;
 
-        // 1. SETUP CAMERA (Rear-Facing, Optimized for High FPS)
+        // 1. SETUP CAMERA
         async function setupCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         facingMode: 'environment', // Rear Camera
-                        width: { ideal: 640 },     // Lower res = Higher Speed on Mobile
+                        width: { ideal: 640 },     // Low Res = High Speed
                         height: { ideal: 480 } 
                     },
                     audio: false
@@ -110,54 +129,42 @@
                         resolve(video);
                     };
                 });
-            } catch (e) { 
-                alert("Camera Error: Please ensure you are on HTTPS and allowed camera access."); 
-            }
+            } catch (e) { alert("Camera Access Error. Ensure HTTPS is enabled."); }
         }
 
-        // 2. LOAD AI MODEL (Lite Version)
+        // 2. LOAD AI
         async function loadModel() {
-            // "lite_mobilenet_v2" is critical for mobile performance
             model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-            loader.style.display = 'none'; // Hide loading screen
-            detectFrame(); // Start Loop
+            loader.style.display = 'none';
+            detectFrame();
         }
 
-        // 3. MAIN GAME LOOP
+        // 3. MAIN LOOP
         async function detectFrame(time) {
             if (!model) return;
-
-            // Calculate FPS
-            if (lastTime) {
-                const fps = Math.round(1000 / (time - lastTime));
-                fpsDisplay.innerText = fps;
-                fpsDisplay.style.color = fps > 25 ? "#39ff14" : (fps > 15 ? "orange" : "red");
-            }
+            if (lastTime) fpsDisplay.innerText = Math.round(1000 / (time - lastTime));
             lastTime = time;
 
-            // Run Detection
             const predictions = await model.detect(video);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the Bounce History first (Bottom Layer)
+            drawImpactMap();
 
             let bestPrediction = null;
             let highestScore = 0;
 
             predictions.forEach(prediction => {
-                // Only track "sports ball"
                 if (prediction.class === 'sports ball') {
-                    
-                    // --- SPEED BOOST LOGIC ---
                     let adjustedScore = prediction.score;
                     
-                    // If we are locked and moving fast, boost confidence
+                    // SPEED BOOST: If fast, increase confidence
                     if (isLocked && speedMagnitude > MIN_SPEED_FOR_BOOST) {
-                        adjustedScore += 0.45; // Huge boost for fast moving objects
+                        adjustedScore += 0.4;
                         if (adjustedScore > 1.0) adjustedScore = 1.0;
                     }
 
-                    // --- STICKY THRESHOLD ---
-                    // If locked: Accept anything > 15% (0.15)
-                    // If searching: Require > 35% (0.35)
+                    // STICKY THRESHOLD: Lower requirement if already locked
                     const threshold = isLocked ? 0.15 : 0.35;
 
                     if (adjustedScore > threshold) {
@@ -173,62 +180,66 @@
                 // === BALL FOUND ===
                 isLocked = true;
                 lostFrames = 0;
+                framesSinceBounce++;
 
                 const [x, y, width, height] = bestPrediction.bbox;
                 const centerX = x + width / 2;
                 const centerY = y + height / 2;
 
-                // Update Physics (Velocity Calculation)
                 if (lastPos) {
                     const rawVx = centerX - lastPos.x;
                     const rawVy = centerY - lastPos.y;
                     
-                    // Smoothing: 50% old speed, 50% new speed
                     velocity.x = (velocity.x * 0.5) + (rawVx * 0.5);
                     velocity.y = (velocity.y * 0.5) + (rawVy * 0.5);
-                    
-                    // Update Speed Display
                     speedMagnitude = Math.sqrt(velocity.x**2 + velocity.y**2);
                     speedDisplay.innerText = Math.round(speedMagnitude) + " px/f";
+                    
+                    // --- VISIBLE BOUNCE DETECTION ---
+                    // If ball was falling (>5) and now stops or goes up (<-2)
+                    if (framesSinceBounce > BOUNCE_COOLDOWN) {
+                        if (lastVelocityY > 5 && velocity.y < -2) {
+                             registerBounce(centerX, centerY + height/2); // Mark bottom of ball
+                        }
+                    }
+                    lastVelocityY = velocity.y;
                 }
                 lastPos = { x: centerX, y: centerY };
 
-                // HUD Update
-                confDisplay.innerText = "LOCKED (" + Math.round(highestScore * 100) + "%)";
-                confDisplay.style.color = "#39ff14"; // Neon Green
-                
+                confDisplay.innerText = "LOCKED";
+                confDisplay.style.color = "#39ff14";
                 updateTrail(centerX, centerY);
                 drawTracker(centerX, centerY, width, height, false);
 
             } else {
-                // === BALL LOST (PHYSICS PREDICTION) ===
+                // === BALL LOST (PREDICTION) ===
                 if (isLocked && lostFrames < MAX_COAST) {
                     
-                    // --- AUTO-BOUNCE LOGIC ---
-                    // If we just lost it, and it was falling FAST... assume it hit the floor.
+                    // --- GHOST BOUNCE DETECTION ---
+                    // If lost while falling fast, assume impact
                     if (lostFrames === 0 && velocity.y > IMPACT_SPEED_THRESHOLD) {
-                        velocity.y = -velocity.y * 0.65; // Bounce UP with 65% energy
-                        console.log("Bounce Detected! Reversing Velocity.");
+                        if (framesSinceBounce > BOUNCE_COOLDOWN) {
+                            registerBounce(lastPos.x, lastPos.y + 20); 
+                            velocity.y = -velocity.y * 0.65; // Bounce Ghost Up
+                            console.log("Ghost Bounce Detected");
+                        }
                     }
 
                     lostFrames++;
+                    framesSinceBounce++;
                     
-                    // Apply Physics
-                    velocity.y += GRAVITY;          // Gravity pulls down
-                    lastPos.x += velocity.x;        // Move X
-                    lastPos.y += velocity.y;        // Move Y
-                    velocity.x *= 0.98;             // Air Resistance (Drag)
+                    velocity.y += GRAVITY;          
+                    lastPos.x += velocity.x;        
+                    lastPos.y += velocity.y;        
 
-                    confDisplay.innerText = "PREDICTING (" + lostFrames + ")";
-                    confDisplay.style.color = "#f39c12"; // Orange
-
+                    confDisplay.innerText = "PREDICTING";
+                    confDisplay.style.color = "orange";
                     updateTrail(lastPos.x, lastPos.y);
-                    drawTracker(lastPos.x, lastPos.y, 40, 40, true); // True = Ghost Mode
+                    drawTracker(lastPos.x, lastPos.y, 40, 40, true);
                 } else {
-                    // Lock Lost
                     isLocked = false;
                     speedMagnitude = 0;
-                    confDisplay.innerText = "SCANNING...";
+                    confDisplay.innerText = "SCANNING";
                     confDisplay.style.color = "#777";
                     speedDisplay.innerText = "0 px/f";
                     if (trail.length > 0) trail.shift();
@@ -239,63 +250,68 @@
             requestAnimationFrame(detectFrame);
         }
 
-        // --- DRAWING FUNCTIONS ---
+        // --- IMPACT SYSTEM ---
+        function registerBounce(x, y) {
+            bounces.push({x: x, y: y});
+            framesSinceBounce = 0; 
+            if (navigator.vibrate) navigator.vibrate(50); // Haptic Feedback
+        }
 
+        function drawImpactMap() {
+            bounces.forEach(bounce => {
+                // Draw Yellow 'X'
+                ctx.beginPath();
+                ctx.strokeStyle = "#FFFF00";
+                ctx.lineWidth = 4;
+                const size = 15;
+                ctx.moveTo(bounce.x - size, bounce.y - size);
+                ctx.lineTo(bounce.x + size, bounce.y + size);
+                ctx.moveTo(bounce.x + size, bounce.y - size);
+                ctx.lineTo(bounce.x - size, bounce.y + size);
+                ctx.stroke();
+                
+                // Draw Ripple
+                ctx.beginPath();
+                ctx.strokeStyle = "rgba(255, 255, 0, 0.4)";
+                ctx.lineWidth = 2;
+                ctx.arc(bounce.x, bounce.y, 25, 0, Math.PI*2);
+                ctx.stroke();
+            });
+        }
+        
+        function clearBounces() { bounces = []; }
+
+        // --- DRAWING TOOLS ---
         function updateTrail(x, y) {
             trail.push({x, y});
-            if (trail.length > 20) trail.shift(); // Trail Length
+            if (trail.length > 15) trail.shift();
         }
 
         function drawTracker(x, y, w, h, isGhost) {
             ctx.save();
             ctx.translate(x, y);
-            
-            // Style: Green for Real, Orange for Ghost/Prediction
             ctx.strokeStyle = isGhost ? '#f39c12' : '#39ff14';
-            
-            // If moving fast, make the box thicker
             ctx.lineWidth = (!isGhost && speedMagnitude > MIN_SPEED_FOR_BOOST) ? 5 : 3;
-            
-            if (isGhost) ctx.setLineDash([6, 6]); // Dashed line for ghost
-
-            // Draw Dynamic Box
-            // Ghost box is fixed size (30px), Real box matches ball size
+            if (isGhost) ctx.setLineDash([5, 5]); 
             const boxSize = isGhost ? 30 : Math.max(w, h); 
             ctx.strokeRect(-boxSize/2, -boxSize/2, boxSize, boxSize);
-            
-            // Draw Crosshair
-            ctx.beginPath();
-            ctx.moveTo(0, -10); ctx.lineTo(0, 10);
-            ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
             ctx.restore();
         }
 
         function drawTrail() {
             if (trail.length < 2) return;
             ctx.beginPath();
-            // Gradient: Transparent to Neon Green
-            const gradient = ctx.createLinearGradient(
-                trail[0].x, trail[0].y, 
-                trail[trail.length-1].x, trail[trail.length-1].y
-            );
+            const gradient = ctx.createLinearGradient(trail[0].x, trail[0].y, trail[trail.length-1].x, trail[trail.length-1].y);
             gradient.addColorStop(0, "rgba(57, 255, 20, 0)");
             gradient.addColorStop(1, "rgba(57, 255, 20, 0.6)");
-            
             ctx.strokeStyle = gradient;
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 5;
             ctx.lineCap = "round";
-            
             ctx.moveTo(trail[0].x, trail[0].y);
-            for (let i = 1; i < trail.length; i++) {
-                ctx.lineTo(trail[i].x, trail[i].y);
-            }
+            for (let i = 1; i < trail.length; i++) { ctx.lineTo(trail[i].x, trail[i].y); }
             ctx.stroke();
         }
 
-        // Start the System
         setupCamera().then(loadModel);
     </script>
 </body>
