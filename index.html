@@ -51,7 +51,7 @@
             border-left: 4px solid #ff4757; 
             pointer-events: none;
             box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-            max-width: 280px;
+            max-width: 300px;
         }
         .status { 
             color: #ff4757; 
@@ -123,6 +123,10 @@
         .btn-settings {
             background: rgba(108, 92, 231, 0.9);
             border-color: #6c5ce7;
+        }
+        .btn-review {
+            background: rgba(255, 184, 0, 0.9);
+            border-color: #ffb800;
         }
 
         /* Calibration Target Ring */
@@ -223,12 +227,12 @@
             background: rgba(0,0,0,0.9);
             padding: 12px 20px;
             border-radius: 10px;
-            border-right: 4px solid #39ff14;
+            border-right: 4px solid #FFFF00;
             pointer-events: none;
             box-shadow: 0 4px 20px rgba(0,0,0,0.7);
         }
         .bounce-count {
-            color: #39ff14;
+            color: #FFFF00;
             font-size: 28px;
             font-weight: 700;
             text-align: center;
@@ -239,6 +243,79 @@
             text-align: center;
             margin-top: 2px;
             letter-spacing: 1px;
+        }
+
+        /* Review Panel */
+        #review-panel {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            z-index: 150;
+            display: none;
+            max-width: 90%;
+            width: 400px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        #review-panel.active {
+            display: block;
+        }
+        .review-header {
+            color: #ffb800;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #ffb800;
+            padding-bottom: 8px;
+        }
+        .bounce-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 3px solid #FFFF00;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .bounce-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateX(5px);
+        }
+        .bounce-number {
+            color: #FFFF00;
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        .bounce-details {
+            color: #aaa;
+            font-size: 11px;
+        }
+        .close-review {
+            margin-top: 15px;
+            width: 100%;
+            padding: 10px;
+            background: #ffb800;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        /* Bounce animation */
+        @keyframes bounceImpact {
+            0% { transform: scale(0); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .new-bounce {
+            animation: bounceImpact 0.3s ease-out;
         }
     </style>
 </head>
@@ -262,7 +339,7 @@
                 <span class="stat-value" id="fps-count">0</span>
             </div>
             <div class="stat-item">
-                <span>Velocity:</span>
+                <span>VelY:</span>
                 <span class="stat-value" id="velocity-display">0</span>
             </div>
             <div class="stat-item">
@@ -282,6 +359,7 @@
     <div class="controls">
         <button class="btn btn-reset" id="reset-btn">🎯 RETARGET</button>
         <button class="btn btn-settings" id="settings-btn">⚙️ SETTINGS</button>
+        <button class="btn btn-review" id="review-btn">📋 REVIEW</button>
         <button class="btn btn-clear" id="clear-btn">✖ CLEAR</button>
     </div>
 
@@ -314,21 +392,27 @@
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Bounce Sensitivity</span>
-                <span class="setting-value" id="bounce-val">3</span>
+                <span>Bounce Sensitivity (lower = more sensitive)</span>
+                <span class="setting-value" id="bounce-val">4</span>
             </div>
-            <input type="range" id="bounce-range" min="1" max="10" value="3" step="0.5">
+            <input type="range" id="bounce-range" min="2" max="12" value="4" step="1">
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Trail Length</span>
-                <span class="setting-value" id="trail-val">15</span>
+                <span class="setting-value" id="trail-val">20</span>
             </div>
-            <input type="range" id="trail-range" min="5" max="40" value="15">
+            <input type="range" id="trail-range" min="5" max="40" value="20">
         </div>
         
         <button class="close-settings" id="close-settings">CLOSE</button>
+    </div>
+
+    <div id="review-panel">
+        <div class="review-header">Bounce Review</div>
+        <div id="bounce-list"></div>
+        <button class="close-review" id="close-review">CLOSE</button>
     </div>
 
     <script>
@@ -345,6 +429,8 @@
         const calibRing = document.getElementById('calib-ring');
         const bounceCountDisplay = document.getElementById('bounce-count');
         const settingsPanel = document.getElementById('settings-panel');
+        const reviewPanel = document.getElementById('review-panel');
+        const bounceList = document.getElementById('bounce-list');
 
         // --- CALIBRATION STATE ---
         let isCalibrated = false;
@@ -354,12 +440,14 @@
         // --- TRACKING STATE ---
         let bounces = [];
         let trail = [];
+        let positionHistory = []; // Track last N positions for better bounce detection
         let lastPos = null;
         let velocity = { x: 0, y: 0 };
         let lostFrames = 0;
         let lastBounceTime = 0;
-        let maxTrailLength = 15;
-        let bounceThreshold = 3;
+        let maxTrailLength = 20;
+        let bounceThreshold = 4;
+        let lowestPoint = null; // Track the lowest point before bounce
 
         // --- PERFORMANCE TRACKING ---
         let frameCount = 0;
@@ -466,7 +554,7 @@
             const lMax = Math.min(100, targetColor.l + colorRange.l);
 
             // Pixel scan with stride for performance
-            const stride = 8; // Check every 8th pixel (adjustable)
+            const stride = 8; // Check every 8th pixel
             for (let i = 0; i < data.length; i += stride * 4) {
                 const r = data[i];
                 const g = data[i + 1];
@@ -503,7 +591,7 @@
 
             // Object validation
             let isValidBall = false;
-            let centerX = 0, centerY = 0, radius = 0;
+            let centerX = 0, centerY = 0, radius = 0, bottomY = 0;
             let confidence = 0;
 
             if (count > 20) { // Noise threshold
@@ -511,17 +599,18 @@
                 const height = maxY - minY;
                 const ratio = width > 0 ? height / width : 0;
 
-                // Shape validation: should be roughly circular (0.6 to 1.7 ratio)
+                // Shape validation: should be roughly circular
                 if (ratio > 0.6 && ratio < 1.7) {
                     centerX = sumX / count;
                     centerY = sumY / count;
                     radius = Math.max(width, height) / 2;
+                    bottomY = maxY; // Bottom of the ball (actual contact point)
                     
-                    // Calculate confidence based on pixel count and shape
+                    // Calculate confidence
                     const idealPixels = Math.PI * radius * radius;
                     confidence = Math.min(100, (count / idealPixels) * 100);
                     
-                    if (confidence > 30) { // Minimum confidence threshold
+                    if (confidence > 30) {
                         isValidBall = true;
                     }
                 }
@@ -541,28 +630,70 @@
             if (isValidBall) {
                 lostFrames = 0;
                 
+                // Store position history (last 10 frames)
+                positionHistory.push({ 
+                    x: centerX, 
+                    y: centerY, 
+                    bottomY: bottomY,
+                    timestamp: Date.now() 
+                });
+                if (positionHistory.length > 10) {
+                    positionHistory.shift();
+                }
+                
                 if (lastPos) {
                     // Calculate velocity
                     velocity.x = centerX - lastPos.x;
                     velocity.y = centerY - lastPos.y;
-                    const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
-                    velocityDisplay.innerText = Math.round(speed);
+                    velocityDisplay.innerText = Math.round(velocity.y);
                     
-                    // Bounce detection
-                    const now = Date.now();
-                    if (now - lastBounceTime > 400) { // Cooldown period
-                        // Detect upward motion after downward motion (bounce)
-                        if (velocity.y < -bounceThreshold && lastPos.vy > bounceThreshold) {
-                            registerBounce(centerX, centerY + radius);
-                            lastBounceTime = now;
+                    // IMPROVED BOUNCE DETECTION
+                    // Look for: ball was moving down, then started moving up
+                    // This indicates a bounce happened
+                    if (positionHistory.length >= 5) {
+                        const recent = positionHistory.slice(-5);
+                        
+                        // Check if we have a clear velocity reversal pattern
+                        let wasMovingDown = false;
+                        let isMovingUp = false;
+                        let lowestIdx = -1;
+                        let lowestY = -Infinity;
+                        
+                        // Find the lowest point in recent history
+                        for (let i = 0; i < recent.length; i++) {
+                            if (recent[i].bottomY > lowestY) {
+                                lowestY = recent[i].bottomY;
+                                lowestIdx = i;
+                            }
+                        }
+                        
+                        // Check motion before and after lowest point
+                        if (lowestIdx > 0 && lowestIdx < recent.length - 1) {
+                            // Was moving down before lowest point
+                            const beforeVel = recent[lowestIdx].y - recent[lowestIdx - 1].y;
+                            // Is moving up after lowest point
+                            const afterVel = recent[recent.length - 1].y - recent[lowestIdx].y;
+                            
+                            wasMovingDown = beforeVel > bounceThreshold;
+                            isMovingUp = afterVel < -bounceThreshold;
+                            
+                            // Register bounce if we detect the reversal
+                            const now = Date.now();
+                            if (wasMovingDown && isMovingUp && (now - lastBounceTime > 500)) {
+                                const bouncePoint = recent[lowestIdx];
+                                registerBounce(bouncePoint.x, bouncePoint.bottomY);
+                                lastBounceTime = now;
+                                lowestPoint = null;
+                            }
                         }
                     }
+                    
                     lastPos.vy = velocity.y;
                 } else {
                     velocityDisplay.innerText = '0';
                 }
                 
-                lastPos = { x: centerX, y: centerY, vy: velocity.y };
+                lastPos = { x: centerX, y: centerY, bottomY: bottomY, vy: velocity.y };
                 updateTrail(centerX, centerY);
                 drawTracker(centerX, centerY, radius, confidence);
             } else {
@@ -572,6 +703,7 @@
                     drawTracker(lastPos.x, lastPos.y, 15, 0, true);
                 } else {
                     lastPos = null;
+                    positionHistory = [];
                     velocityDisplay.innerText = '0';
                 }
             }
@@ -587,19 +719,40 @@
 
         // --- DRAWING FUNCTIONS ---
         function drawBounces() {
-            bounces.forEach(b => {
-                const size = 20;
+            bounces.forEach((b, idx) => {
+                const size = 22;
+                const pulseSize = size + Math.sin(Date.now() / 200) * 2;
+                
                 ctx.save();
-                ctx.strokeStyle = "#FFFF00";
-                ctx.lineWidth = 4;
+                
+                // Glow effect
                 ctx.shadowColor = "#FFFF00";
-                ctx.shadowBlur = 10;
+                ctx.shadowBlur = 15;
+                
+                // Draw X mark
+                ctx.strokeStyle = "#FFFF00";
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
                 ctx.beginPath();
-                ctx.moveTo(b.x - size, b.y - size);
-                ctx.lineTo(b.x + size, b.y + size);
-                ctx.moveTo(b.x + size, b.y - size);
-                ctx.lineTo(b.x - size, b.y + size);
+                ctx.moveTo(b.x - pulseSize, b.y - pulseSize);
+                ctx.lineTo(b.x + pulseSize, b.y + pulseSize);
+                ctx.moveTo(b.x + pulseSize, b.y - pulseSize);
+                ctx.lineTo(b.x - pulseSize, b.y + pulseSize);
                 ctx.stroke();
+                
+                // Draw circle around it
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, pulseSize + 5, 0, Math.PI * 2);
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Draw bounce number
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "#FFFF00";
+                ctx.font = "bold 16px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText((idx + 1).toString(), b.x, b.y - pulseSize - 12);
+                
                 ctx.restore();
             });
         }
@@ -665,9 +818,23 @@
         }
 
         function registerBounce(x, y) {
-            bounces.push({ x, y });
+            const timestamp = new Date();
+            bounces.push({ 
+                x, 
+                y, 
+                time: timestamp,
+                number: bounces.length + 1
+            });
             bounceCountDisplay.innerText = bounces.length;
-            if (navigator.vibrate) navigator.vibrate(100);
+            
+            // Visual feedback
+            bounceCountDisplay.classList.add('new-bounce');
+            setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 300);
+            
+            // Haptic feedback
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            
+            console.log(`Bounce #${bounces.length} registered at (${Math.round(x)}, ${Math.round(y)})`);
         }
 
         // --- UTILITY FUNCTIONS ---
@@ -726,11 +893,67 @@
             }
         }
 
+        function updateReviewPanel() {
+            bounceList.innerHTML = '';
+            
+            if (bounces.length === 0) {
+                bounceList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No bounces recorded yet</p>';
+                return;
+            }
+            
+            bounces.forEach((bounce, idx) => {
+                const item = document.createElement('div');
+                item.className = 'bounce-item';
+                item.innerHTML = `
+                    <div class="bounce-number">Bounce #${idx + 1}</div>
+                    <div class="bounce-details">
+                        Time: ${bounce.time.toLocaleTimeString()}<br>
+                        Position: (${Math.round(bounce.x)}, ${Math.round(bounce.y)})
+                    </div>
+                `;
+                
+                // Click to highlight on canvas
+                item.addEventListener('click', () => {
+                    highlightBounce(bounce, idx);
+                });
+                
+                bounceList.appendChild(item);
+            });
+        }
+
+        function highlightBounce(bounce, idx) {
+            // Temporarily draw a large highlight
+            const originalDraw = drawBounces;
+            let highlightFrames = 30;
+            
+            const highlightInterval = setInterval(() => {
+                if (highlightFrames-- <= 0) {
+                    clearInterval(highlightInterval);
+                    return;
+                }
+                
+                // Draw extra highlight ring
+                ctx.save();
+                const pulseScale = 1 + Math.sin(highlightFrames * 0.3) * 0.3;
+                ctx.strokeStyle = "#FF00FF";
+                ctx.lineWidth = 6;
+                ctx.shadowColor = "#FF00FF";
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(bounce.x, bounce.y, 40 * pulseScale, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }, 50);
+        }
+
         // --- CONTROLS ---
         document.getElementById('clear-btn').addEventListener('click', () => {
-            bounces = [];
-            trail = [];
-            bounceCountDisplay.innerText = '0';
+            if (confirm('Clear all bounces? This cannot be undone.')) {
+                bounces = [];
+                trail = [];
+                bounceCountDisplay.innerText = '0';
+                updateReviewPanel();
+            }
         });
 
         document.getElementById('reset-btn').addEventListener('click', () => {
@@ -738,19 +961,32 @@
             bounces = [];
             trail = [];
             lastPos = null;
+            positionHistory = [];
             bounceCountDisplay.innerText = '0';
             statusText.innerText = "⚠️ NOT CALIBRATED";
             statusText.style.color = "#ff4757";
             instructText.innerText = "Tap on the tennis ball to start tracking";
             calibRing.style.display = "block";
+            updateReviewPanel();
         });
 
         document.getElementById('settings-btn').addEventListener('click', () => {
             settingsPanel.classList.add('active');
+            reviewPanel.classList.remove('active');
         });
 
         document.getElementById('close-settings').addEventListener('click', () => {
             settingsPanel.classList.remove('active');
+        });
+
+        document.getElementById('review-btn').addEventListener('click', () => {
+            updateReviewPanel();
+            reviewPanel.classList.add('active');
+            settingsPanel.classList.remove('active');
+        });
+
+        document.getElementById('close-review').addEventListener('click', () => {
+            reviewPanel.classList.remove('active');
         });
 
         // Settings controls
