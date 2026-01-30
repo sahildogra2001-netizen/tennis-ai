@@ -634,33 +634,56 @@
         }
 
         // --- FIND MOVING OBJECT ---
-        function findLargestMovingObject(motionMap) {
-            const width = canvas.width;
-            const height = canvas.height;
+// REPLACE THE OLD findLargestMovingObject FUNCTION WITH THIS:
+
+function findLargestMovingObject(motionMap) {
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Find connected components (blob detection)
+    const visited = new Uint8ClampedArray(width * height);
+    let bestBlob = null;
+    let maxScore = 0; // We will score objects based on how "ball-like" they are
+
+    // SETTINGS FOR BALL DETECTION
+    const MIN_SIZE = 20;   // Ignore tiny noise/flies
+    const MAX_SIZE = 400;  // CRITICAL: Ignore cars, people, and doors (pixels area)
+    const MIN_RATIO = 0.6; // Balls are roughly 1:1 width/height
+    const MAX_RATIO = 1.6; // Ignore long skinny things (arms, bats)
+
+    for (let y = 0; y < height; y += 2) { // Skip pixels for speed
+        for (let x = 0; x < width; x += 2) {
+            const idx = y * width + x;
             
-            // Find connected components (blob detection)
-            const visited = new Uint8ClampedArray(width * height);
-            let largestBlob = null;
-            let maxSize = 0;
-            
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    const idx = y * width + x;
-                    
-                    if (motionMap[idx] > 0 && !visited[idx]) {
-                        const blob = floodFill(motionMap, visited, x, y, width, height);
-                        
-                        if (blob.size > maxSize && blob.size > minObjectSize) {
-                            maxSize = blob.size;
-                            largestBlob = blob;
-                        }
-                    }
+            if (motionMap[idx] > 0 && !visited[idx]) {
+                const blob = floodFill(motionMap, visited, x, y, width, height);
+                
+                if (!blob) continue;
+
+                // --- 1. SIZE FILTER ---
+                // If it's too huge (a car/person) or too small (noise), SKIP IT
+                if (blob.size < MIN_SIZE || blob.size > MAX_SIZE) continue;
+
+                // --- 2. SHAPE FILTER (Aspect Ratio) ---
+                const blobWidth = blob.bounds.maxX - blob.bounds.minX;
+                const blobHeight = blob.bounds.maxY - blob.bounds.minY;
+                const ratio = blobWidth / blobHeight;
+
+                // A ball fits in a square (ratio ~1.0). 
+                // A person is tall (ratio < 0.5). A car is wide (ratio > 2.0).
+                if (ratio < MIN_RATIO || ratio > MAX_RATIO) continue;
+
+                // If it passes the filters, we pick the largest of the VALID objects
+                if (blob.size > maxScore) {
+                    maxScore = blob.size;
+                    bestBlob = blob;
                 }
             }
-            
-            return largestBlob;
         }
-
+    }
+    
+    return bestBlob;
+}
         // --- FLOOD FILL (Blob Detection) ---
         function floodFill(motionMap, visited, startX, startY, width, height) {
             const stack = [[startX, startY]];
