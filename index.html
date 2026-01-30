@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye Spectral Tracker</title>
+    <title>Hawk-Eye Stable</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: monospace; }
         video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        canvas { z-index: 10; }
+        canvas { z-index: 10; pointer-events: none; } /* Added pointer-events: none to canvas */
         
         /* HUD */
         .hud {
@@ -18,14 +18,15 @@
         .stat { color: #fff; font-size: 12px; margin-bottom: 4px; }
         .label { color: #888; margin-right: 10px; }
         
-        /* Controls */
+        /* Controls - Z-Index Increased to 100 */
         .controls {
-            position: absolute; bottom: 20px; z-index: 30; width: 100%;
-            display: flex; justify-content: center; gap: 10px;
+            position: absolute; bottom: 20px; z-index: 100; width: 100%;
+            display: flex; justify-content: center; gap: 10px; pointer-events: auto;
         }
         .btn {
             background: #333; color: white; border: 1px solid #555;
-            padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer;
+            padding: 15px 30px; border-radius: 20px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); /* Added shadow for visibility */
         }
         .btn-clear { background: #ff4757; border: none; }
     </style>
@@ -33,7 +34,7 @@
 <body>
 
     <div class="hud">
-        <div class="stat"><span class="label">ENGINE</span> SPECTRAL (COLOR)</div>
+        <div class="stat"><span class="label">ENGINE</span> SPECTRAL (ANTI-GRASS)</div>
         <div class="stat"><span class="label">FPS</span> <span id="fps">0</span></div>
         <div class="stat"><span class="label">PIXELS</span> <span id="pixels">0</span></div>
     </div>
@@ -63,13 +64,12 @@
         let velocity = {x:0, y:0};
         let lostFrames = 0;
         
-        // --- SPECTRAL TUNING (NEON YELLOW) ---
-        // These range from 0-360 (Hue), 0-100 (Sat), 0-100 (Light)
-        // Tennis Ball = Yellow-Green (Hue 25-50 or 40-80 depending on light)
-        const COLOR_MIN = { h: 25, s: 40, l: 30 }; 
+        // --- SPECTRAL TUNING ---
+        // Narrowed Hue slightly to 30-85 to filter deep greens
+        const COLOR_MIN = { h: 30, s: 40, l: 30 }; 
         const COLOR_MAX = { h: 85, s: 100, l: 95 };
         
-        // Minimum pixels to count as a ball (filters out noise)
+        // Minimum pixels to count as a ball
         const MIN_BLOB_SIZE = 20; 
 
         // 1. SETUP CAMERA
@@ -88,75 +88,65 @@
             } catch (e) { alert("Camera Error"); }
         }
 
-        // 2. MAIN PROCESSING LOOP (The "Spectral" Engine)
+        // 2. MAIN PROCESSING LOOP
         function processFrame(time) {
             if(lastTime) fpsDisplay.innerText = Math.round(1000/(time-lastTime));
             lastTime = time;
 
-            // Draw video to a hidden canvas to read pixels
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // Get raw pixel data (The "Vision")
             const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = frame.data;
             const width = canvas.width;
-            const height = canvas.height;
-
+            
             let sumX = 0, sumY = 0, count = 0;
 
-            // --- PIXEL SCANNING (Optimized) ---
-            // We scan every 4th pixel to keep FPS high (60fps)
+            // --- PIXEL SCANNING ---
             for (let i = 0; i < data.length; i += 16) { 
                 const r = data[i];
                 const g = data[i+1];
                 const b = data[i+2];
 
-                // Convert RGB to HSL (Hue, Saturation, Lightness)
-                // This allows us to find "Neon" regardless of shadows
                 const hsl = rgbToHsl(r, g, b);
 
-                // CHECK: Is this pixel Neon Yellow?
                 if (hsl.h >= COLOR_MIN.h && hsl.h <= COLOR_MAX.h &&
                     hsl.s >= COLOR_MIN.s && hsl.s <= COLOR_MAX.s &&
                     hsl.l >= COLOR_MIN.l && hsl.l <= COLOR_MAX.l) {
                     
-                    // Specific check: Tennis balls are "Greener" than skin tone and "Redder" than grass
-                    // Simple "Green dominant" check for extra filtering
-                    if (g > r && g > b) {
+                    // --- THE FIX: ANTI-GRASS MATH ---
+                    // Old code: if (g > r && g > b) -> This allowed Grass.
+                    // New code: r > g * 0.5 -> Forces "Yellow" (Red+Green), rejecting pure Green.
+                    if (r > g * 0.5 && g > b) {
                         sumX += (i / 4) % width;
                         sumY += Math.floor((i / 4) / width);
                         count++;
                         
-                        // Debug: Color detected pixels red
+                        // Debug: Turn detected pixels RED
                         if(isDebug) { data[i] = 255; data[i+1] = 0; data[i+2] = 0; }
                     }
                 }
             }
 
-            // Put debug pixels back if needed
             if(isDebug) ctx.putImageData(frame, 0, 0);
             else ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Bounce Map (Bottom Layer)
             drawBounces();
 
             pxDisplay.innerText = count;
 
             // --- TRACKING LOGIC ---
             if (count > MIN_BLOB_SIZE) {
-                // FOUND BALL
                 const centerX = sumX / count;
                 const centerY = sumY / count;
-                const radius = Math.sqrt(count) * 1.5; // Estimate size based on pixel count
+                const radius = Math.sqrt(count) * 1.5; 
                 
                 lostFrames = 0;
 
-                // Physics update
                 if (lastPos) {
                     velocity.x = centerX - lastPos.x;
                     velocity.y = centerY - lastPos.y;
                     
-                    // Detect Bounce (Fast Down -> Slow/Up)
+                    // Detect Bounce
                     if (velocity.y < -2 && lastPos.vy > 5) {
                         registerBounce(centerX, centerY + radius);
                     }
@@ -170,7 +160,6 @@
                 // LOST BALL (Predict)
                 if (lostFrames < 15 && lastPos) {
                     lostFrames++;
-                    // Apply Gravity
                     velocity.y += 0.5;
                     lastPos.x += velocity.x;
                     lastPos.y += velocity.y;
@@ -184,74 +173,9 @@
             requestAnimationFrame(processFrame);
         }
 
-        // --- HELPER FUNCTIONS ---
+        // --- DRAWING FUNCTIONS ---
 
         function drawTracker(x, y, r, isGhost) {
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.strokeStyle = isGhost ? "orange" : "#39ff14";
-            ctx.lineWidth = 3;
-            if(isGhost) ctx.setLineDash([5,5]); else ctx.setLineDash([]);
-            ctx.stroke();
-            
-            // Crosshair
-            ctx.beginPath(); ctx.moveTo(x-5, y); ctx.lineTo(x+5, y); ctx.moveTo(x, y-5); ctx.lineTo(x, y+5);
-            ctx.stroke();
-        }
-
-        function drawTrail() {
-            if(trail.length < 2) return;
-            ctx.beginPath();
-            ctx.strokeStyle = "rgba(57, 255, 20, 0.5)";
-            ctx.lineWidth = 4;
-            ctx.setLineDash([]);
-            ctx.moveTo(trail[0].x, trail[0].y);
-            for(let p of trail) ctx.lineTo(p.x, p.y);
-            ctx.stroke();
-        }
-
-        function drawBounces() {
-            for(let b of bounces) {
-                ctx.beginPath(); ctx.strokeStyle = "yellow"; ctx.lineWidth=3;
-                ctx.moveTo(b.x-10, b.y-10); ctx.lineTo(b.x+10, b.y+10);
-                ctx.moveTo(b.x+10, b.y-10); ctx.lineTo(b.x-10, b.y+10);
-                ctx.stroke();
-            }
-        }
-
-        function registerBounce(x, y) {
-            bounces.push({x,y});
-            if(navigator.vibrate) navigator.vibrate(50);
-        }
-
-        function updateTrail(x, y) {
-            trail.push({x,y});
-            if(trail.length > 10) trail.shift();
-        }
-
-        function clearMap() { bounces = []; }
-        function toggleDebug() { isDebug = !isDebug; }
-
-        // Color Math (RGB -> HSL)
-        function rgbToHsl(r, g, b) {
-            r /= 255, g /= 255, b /= 255;
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h, s, l = (max + min) / 2;
-            if (max == min) { h = s = 0; } 
-            else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
-                }
-                h *= 60;
-            }
-            return { h, s: s * 100, l: l * 100 };
-        }
-
-        setupCamera();
-    </script>
-</body>
-</html>
