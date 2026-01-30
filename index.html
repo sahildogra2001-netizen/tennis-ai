@@ -3,48 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hawk-Eye Stable</title>
+    <title>Hawk-Eye Replay</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; height: 100vh; display: flex; align-items: center; justify-content: center; font-family: monospace; }
-        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-        canvas { z-index: 10; pointer-events: none; } /* Added pointer-events: none to canvas */
+        /* Immersive Black Background */
+        body { 
+            margin: 0; background: #000; overflow: hidden; height: 100vh; 
+            display: flex; align-items: center; justify-content: center; 
+            font-family: 'Courier New', monospace; 
+        }
         
-        /* HUD */
+        /* Video & Drawing Canvas */
+        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        canvas { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            object-fit: cover; z-index: 10; pointer-events: none; 
+        }
+        
+        /* Heads-Up Display */
         .hud {
             position: absolute; top: 10px; left: 10px; z-index: 20;
-            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px;
-            border-left: 4px solid #39ff14; pointer-events: none;
+            background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px;
+            border-left: 5px solid #39ff14; pointer-events: none;
         }
-        .stat { color: #fff; font-size: 12px; margin-bottom: 4px; }
-        .label { color: #888; margin-right: 10px; }
-        
-        /* Controls - Z-Index Increased to 100 */
+        .stat-row { color: #fff; font-size: 12px; margin-bottom: 5px; }
+        .label { color: #aaa; font-weight: bold; margin-right: 10px; }
+        .val { color: #fff; font-weight: bold; }
+
+        /* Controls - Z-Index 100 to ensure clicks work */
         .controls {
-            position: absolute; bottom: 20px; z-index: 100; width: 100%;
-            display: flex; justify-content: center; gap: 10px; pointer-events: auto;
+            position: absolute; bottom: 30px; z-index: 100; width: 100%;
+            display: flex; justify-content: center; gap: 15px; pointer-events: auto;
         }
         .btn {
             background: #333; color: white; border: 1px solid #555;
-            padding: 15px 30px; border-radius: 20px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); /* Added shadow for visibility */
+            padding: 15px 25px; border-radius: 30px; font-weight: bold; 
+            cursor: pointer; text-transform: uppercase; font-size: 14px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); user-select: none;
         }
-        .btn-clear { background: #ff4757; border: none; }
+        .btn:active { transform: scale(0.95); }
+        .btn-clear { background: #ff4757; border-color: #ff4757; }
+        
+        /* Replay Button (Hidden by default) */
+        .btn-replay { 
+            background: #39ff14; color: black; border-color: #39ff14; 
+            display: none; animation: popIn 0.3s ease-out;
+        }
+        @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+
+        /* Replay Modal Window */
+        #replay-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 200; 
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+        #replay-video { 
+            width: 95%; max-height: 70vh; border: 2px solid #39ff14; 
+            border-radius: 8px; box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+        }
+        .close-btn { margin-top: 20px; background: red; border: none; min-width: 100px; }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <div class="stat"><span class="label">ENGINE</span> SPECTRAL (ANTI-GRASS)</div>
-        <div class="stat"><span class="label">FPS</span> <span id="fps">0</span></div>
-        <div class="stat"><span class="label">PIXELS</span> <span id="pixels">0</span></div>
+        <div class="stat-row" style="color:#39ff14;">INSTANT REPLAY ACTIVE</div>
+        <div class="stat-row"><span class="label">FPS</span> <span class="val" id="fps">0</span></div>
+        <div class="stat-row"><span class="label">RECORDER</span> <span class="val" style="color:red">● REC</span></div>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
     <canvas id="overlay"></canvas>
 
     <div class="controls">
-        <button class="btn btn-clear" onclick="clearMap()">Clear Marks</button>
-        <button class="btn" onclick="toggleDebug()">Debug View</button>
+        <button class="btn btn-replay" id="btn-replay" onclick="showReplay()">🎥 WATCH REPLAY</button>
+        <button class="btn btn-clear" onclick="clearMap()">✖ CLEAR</button>
+    </div>
+
+    <div id="replay-modal">
+        <h3 style="color:white; font-family:sans-serif;">HAWK-EYE REPLAY</h3>
+        <video id="replay-video" controls loop playsinline></video>
+        <button class="btn close-btn" onclick="closeReplay()">CLOSE</button>
     </div>
 
     <script>
@@ -52,27 +90,29 @@
         const canvas = document.getElementById('overlay');
         const ctx = canvas.getContext('2d');
         const fpsDisplay = document.getElementById('fps');
-        const pxDisplay = document.getElementById('pixels');
+        const replayBtn = document.getElementById('btn-replay');
+        const replayModal = document.getElementById('replay-modal');
+        const replayVideo = document.getElementById('replay-video');
         
+        // --- RECORDER VARIABLES ---
+        let mediaRecorder;
+        let recordedChunks = [];
+        let lastBounceBlob = null;
+        
+        // --- TRACKING VARIABLES ---
         let lastTime = 0;
-        let isDebug = false;
-        
-        // --- PHYSICS & TRACKING ---
-        let trail = [];
         let bounces = [];
+        let trail = [];
         let lastPos = null;
         let velocity = {x:0, y:0};
         let lostFrames = 0;
         
-        // --- SPECTRAL TUNING ---
-        // Narrowed Hue slightly to 30-85 to filter deep greens
+        // --- TUNING (Anti-Grass Settings) ---
         const COLOR_MIN = { h: 30, s: 40, l: 30 }; 
         const COLOR_MAX = { h: 85, s: 100, l: 95 };
-        
-        // Minimum pixels to count as a ball
         const MIN_BLOB_SIZE = 20; 
 
-        // 1. SETUP CAMERA
+        // 1. SETUP CAMERA & RECORDER
         async function setupCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -83,16 +123,40 @@
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
+                    startRecording(); // Start the dashcam
                     processFrame();
                 };
-            } catch (e) { alert("Camera Error"); }
+            } catch (e) { alert("Camera Access Error. Use HTTPS."); }
         }
 
-        // 2. MAIN PROCESSING LOOP
+        // 2. DASHCAM (Rolling Buffer)
+        function startRecording() {
+            // Record the canvas (Overlay + Video if drawn)
+            // Note: To record video AND canvas, we need to draw video to canvas first.
+            // This script draws video to canvas every frame, so we record the canvas stream.
+            const canvasStream = canvas.captureStream(30); 
+            
+            const mimeType = MediaRecorder.isTypeSupported("video/webm") ? "video/webm" : "video/mp4";
+            mediaRecorder = new MediaRecorder(canvasStream, { mimeType: mimeType });
+            
+            mediaRecorder.ondataavailable = function(e) {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                    // Keep only last 4 seconds
+                    if (recordedChunks.length > 4) {
+                        recordedChunks.shift(); 
+                    }
+                }
+            };
+            mediaRecorder.start(1000); // New chunk every 1 second
+        }
+
+        // 3. MAIN VISION LOOP
         function processFrame(time) {
             if(lastTime) fpsDisplay.innerText = Math.round(1000/(time-lastTime));
             lastTime = time;
 
+            // Draw video to canvas (Essential for analysis AND recording)
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -101,54 +165,42 @@
             
             let sumX = 0, sumY = 0, count = 0;
 
-            // --- PIXEL SCANNING ---
+            // PIXEL SCAN
             for (let i = 0; i < data.length; i += 16) { 
-                const r = data[i];
-                const g = data[i+1];
-                const b = data[i+2];
-
+                const r = data[i], g = data[i+1], b = data[i+2];
                 const hsl = rgbToHsl(r, g, b);
 
                 if (hsl.h >= COLOR_MIN.h && hsl.h <= COLOR_MAX.h &&
                     hsl.s >= COLOR_MIN.s && hsl.s <= COLOR_MAX.s &&
                     hsl.l >= COLOR_MIN.l && hsl.l <= COLOR_MAX.l) {
                     
-                    // --- THE FIX: ANTI-GRASS MATH ---
-                    // Old code: if (g > r && g > b) -> This allowed Grass.
-                    // New code: r > g * 0.5 -> Forces "Yellow" (Red+Green), rejecting pure Green.
+                    // ANTI-GRASS FIX (Red > Green * 0.5)
                     if (r > g * 0.5 && g > b) {
                         sumX += (i / 4) % width;
                         sumY += Math.floor((i / 4) / width);
                         count++;
-                        
-                        // Debug: Turn detected pixels RED
-                        if(isDebug) { data[i] = 255; data[i+1] = 0; data[i+2] = 0; }
                     }
                 }
             }
-
-            if(isDebug) ctx.putImageData(frame, 0, 0);
-            else ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+            
+            // Draw Bounces (Bottom Layer)
             drawBounces();
 
-            pxDisplay.innerText = count;
-
-            // --- TRACKING LOGIC ---
+            // TRACKING LOGIC
             if (count > MIN_BLOB_SIZE) {
                 const centerX = sumX / count;
                 const centerY = sumY / count;
                 const radius = Math.sqrt(count) * 1.5; 
-                
                 lostFrames = 0;
 
                 if (lastPos) {
                     velocity.x = centerX - lastPos.x;
                     velocity.y = centerY - lastPos.y;
                     
-                    // Detect Bounce
+                    // BOUNCE DETECTION
                     if (velocity.y < -2 && lastPos.vy > 5) {
                         registerBounce(centerX, centerY + radius);
+                        saveReplay(); // <--- SAVE CLIP ON BOUNCE
                     }
                     lastPos.vy = velocity.y;
                 }
@@ -157,13 +209,11 @@
                 updateTrail(centerX, centerY);
                 drawTracker(centerX, centerY, radius, false);
             } else {
-                // LOST BALL (Predict)
                 if (lostFrames < 15 && lastPos) {
                     lostFrames++;
                     velocity.y += 0.5;
                     lastPos.x += velocity.x;
                     lastPos.y += velocity.y;
-                    
                     updateTrail(lastPos.x, lastPos.y);
                     drawTracker(lastPos.x, lastPos.y, 10, true);
                 }
@@ -173,9 +223,71 @@
             requestAnimationFrame(processFrame);
         }
 
-        // --- DRAWING FUNCTIONS ---
+        // --- REPLAY LOGIC ---
+        function saveReplay() {
+            // Create a video blob from the rolling buffer
+            lastBounceBlob = new Blob(recordedChunks, { type: "video/webm" });
+            
+            // Show Button
+            replayBtn.style.display = "block";
+            
+            // Auto-hide after 6 seconds
+            setTimeout(() => { replayBtn.style.display = "none"; }, 6000);
+        }
 
+        function showReplay() {
+            if (!lastBounceBlob) return;
+            replayVideo.src = URL.createObjectURL(lastBounceBlob);
+            replayModal.style.display = "flex";
+            replayVideo.play();
+        }
+
+        function closeReplay() {
+            replayModal.style.display = "none";
+            replayVideo.pause();
+        }
+
+        // --- DRAWING ---
         function drawTracker(x, y, r, isGhost) {
-            ctx.beginPath();
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.strokeStyle = isGhost ? "orange" : "#39ff14";
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.strokeStyle = isGhost ? "orange" : "#39ff14"; ctx.lineWidth = 3; 
+            if(isGhost) ctx.setLineDash([5,5]); else ctx.setLineDash([]); ctx.stroke();
+            // Crosshair
+            ctx.beginPath(); ctx.moveTo(x-5, y); ctx.lineTo(x+5, y); 
+            ctx.moveTo(x, y-5); ctx.lineTo(x, y+5); ctx.stroke();
+        }
+        function drawTrail() {
+            if(trail.length < 2) return;
+            ctx.beginPath(); ctx.strokeStyle = "rgba(57, 255, 20, 0.5)"; ctx.lineWidth = 4; ctx.setLineDash([]);
+            ctx.moveTo(trail[0].x, trail[0].y); for(let p of trail) ctx.lineTo(p.x, p.y); ctx.stroke();
+        }
+        function drawBounces() {
+            for(let b of bounces) {
+                ctx.beginPath(); ctx.strokeStyle = "yellow"; ctx.lineWidth=3;
+                ctx.moveTo(b.x-10, b.y-10); ctx.lineTo(b.x+10, b.y+10);
+                ctx.moveTo(b.x+10, b.y-10); ctx.lineTo(b.x-10, b.y+10); ctx.stroke();
+            }
+        }
+        function registerBounce(x, y) {
+            bounces.push({x,y});
+            if(navigator.vibrate) navigator.vibrate(200); // Strong vibration
+        }
+        function updateTrail(x, y) { trail.push({x,y}); if(trail.length > 10) trail.shift(); }
+        
+        function clearMap() { 
+            bounces = []; 
+            replayBtn.style.display = "none";
+        }
+
+        function rgbToHsl(r, g, b) {
+            r/=255, g/=255, b/=255; const max=Math.max(r,g,b), min=Math.min(r,g,b);
+            let h,s,l=(max+min)/2;
+            if(max==min){h=s=0}else{const d=max-min; s=l>0.5?d/(2-max-min):d/(max+min);
+            switch(max){case r:h=(g-b)/d+(g<b?6:0);break; case g:h=(b-r)/d+2;break; case b:h=(r-g)/d+4;break;} h*=60;}
+            return {h,s:s*100,l:l*100};
+        }
+
+        setupCamera();
+    </script>
+</body>
+</html>
