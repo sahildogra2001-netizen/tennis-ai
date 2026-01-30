@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro-Court Tennis Tracker (TensorFlow)</title>
+    <title>Tennis Turbo: High FPS</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
@@ -13,44 +13,36 @@
         }
         .hud {
             position: absolute; top: 10px; left: 10px; z-index: 20;
-            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px;
-            border: 1px solid #39ff14; pointer-events: none;
+            background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px;
+            border-left: 4px solid #39ff14; pointer-events: none;
         }
-        .stat-row { display: flex; gap: 15px; font-size: 12px; margin-bottom: 4px; }
-        .label { color: #aaa; } .value { color: #fff; font-weight: bold; }
+        .stat-row { display: flex; justify-content: space-between; gap: 15px; font-size: 11px; margin-bottom: 3px; font-family: monospace; }
+        .label { color: #bbb; } .value { color: #fff; font-weight: bold; }
         
-        /* Video and Canvas stacked perfectly */
         video, canvas { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            object-fit: cover; /* Professional full-screen fill */
+            object-fit: cover; 
         }
         canvas { z-index: 10; }
         
         .loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #111; z-index: 100; display: flex; flex-direction: column;
+            background: #000; z-index: 100; display: flex; flex-direction: column;
             justify-content: center; align-items: center; text-align: center;
         }
-        .spinner {
-            width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #39ff14;
-            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
     <div class="hud">
-        <div class="stat-row"><span class="label">SYSTEM:</span> <span class="value">TF.js Neural Engine</span></div>
+        <div class="stat-row"><span class="label">MODE:</span> <span class="value" style="color:#f1c40f">TURBO LITE</span></div>
         <div class="stat-row"><span class="label">FPS:</span> <span class="value" id="fps">0</span></div>
-        <div class="stat-row"><span class="label">CONFIDENCE:</span> <span class="value" id="confidence">0%</span></div>
-        <div class="stat-row"><span class="label">STATUS:</span> <span class="value" style="color:#39ff14" id="status">INITIALIZING...</span></div>
+        <div class="stat-row"><span class="label">CONFIDENCE:</span> <span class="value" id="confidence">SEARCHING...</span></div>
     </div>
 
     <div class="loading-screen" id="loader">
-        <div class="spinner"></div>
-        <div style="color:#39ff14; font-weight:bold;">LOADING AI MODELS...</div>
-        <div style="color:#666; font-size:0.8em; margin-top:5px;">(This runs on your phone's GPU)</div>
+        <div style="color:#39ff14; font-size: 20px; font-weight:bold;">STARTING ENGINE...</div>
+        <div style="color:#666; font-size:12px; margin-top:10px;">Loading Lite Model...</div>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
@@ -62,26 +54,20 @@
         const ctx = canvas.getContext('2d');
         const fpsDisplay = document.getElementById('fps');
         const confDisplay = document.getElementById('confidence');
-        const statusDisplay = document.getElementById('status');
         const loader = document.getElementById('loader');
 
         let model = null;
-        let isDetecting = false;
         let lastTime = 0;
-        
-        // Trail History for high-speed tracking
         let trail = [];
-        const MAX_TRAIL = 10;
 
-        // 1. SETUP CAMERA (Rear-facing, High FPS preference)
         async function setupCamera() {
             try {
+                // Lower resolution (640x480) massively increases FPS on mobile
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 60 } // Request high framerate
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 } 
                     },
                     audio: false
                 });
@@ -93,79 +79,68 @@
                         resolve(video);
                     };
                 });
-            } catch (e) {
-                alert("Camera Access Denied. Please allow camera permissions.");
-            }
+            } catch (e) { alert("Camera Error"); }
         }
 
-        // 2. LOAD TENSORFLOW MODEL
         async function loadModel() {
-            // Load Coco-SSD (Pre-trained on 80 objects including 'sports ball')
-            model = await cocoSsd.load();
-            loader.style.display = 'none'; // Hide loading screen
-            statusDisplay.innerText = "ACTIVE TRACKING";
+            // "lite_mobilenet_v2" is the secret to 60 FPS on phones
+            model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+            loader.style.display = 'none';
             detectFrame();
         }
 
-        // 3. REAL-TIME DETECTION LOOP (Runs every frame)
         async function detectFrame(time) {
             if (!model) return;
 
-            // Calculate FPS
+            // Monitor FPS
             if (lastTime) {
                 const fps = Math.round(1000 / (time - lastTime));
                 fpsDisplay.innerText = fps;
+                // Color code the FPS status
+                fpsDisplay.style.color = fps > 20 ? "#39ff14" : (fps > 10 ? "orange" : "red");
             }
             lastTime = time;
 
-            // Run AI Detection
-            // This happens locally - NO cloud latency
             const predictions = await model.detect(video);
-
-            // Clear Canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            let ballFound = false;
-
-            // Loop through all found objects
+            let found = false;
             predictions.forEach(prediction => {
-                // FILTER: Only look for 'sports ball'
-                // "Nuance": Ignore detected 'person' (players) or 'chair' (courtside)
-                if (prediction.class === 'sports ball') {
-                    ballFound = true;
+                // Only look for "sports ball"
+                if (prediction.class === 'sports ball' && prediction.score > 0.5) { 
+                    found = true;
                     const [x, y, width, height] = prediction.bbox;
                     const centerX = x + width / 2;
                     const centerY = y + height / 2;
                     const score = Math.round(prediction.score * 100);
 
                     // Update HUD
-                    confDisplay.innerText = score + "%";
+                    confDisplay.innerText = score + "% LOCKED";
+                    confDisplay.style.color = "#39ff14";
 
                     // Update Trail
                     trail.push({x: centerX, y: centerY});
-                    if (trail.length > MAX_TRAIL) trail.shift();
+                    if (trail.length > 8) trail.shift();
 
-                    drawProfessionalOverlay(centerX, centerY, width, height, score);
+                    drawTracker(centerX, centerY, width, height);
                 }
             });
 
-            if (!ballFound) {
-                // If ball is lost, slowly fade the trail (don't delete instantly)
-                if (trail.length > 0) trail.shift();
-                drawTrailOnly(); 
-                confDisplay.innerText = "0%";
+            if (!found) {
+                if (trail.length > 0) trail.shift(); // Fade trail
+                drawTrailOnly();
+                confDisplay.innerText = "SCANNING...";
+                confDisplay.style.color = "#777";
             }
 
-            // Loop instantly
             requestAnimationFrame(detectFrame);
         }
 
-        // 4. PROFESSIONAL VISUALIZATION
-        function drawProfessionalOverlay(x, y, w, h, score) {
-            // A. Draw The Trail (Comet Effect)
+        function drawTracker(x, y, w, h) {
+            // Draw Trail
             if (trail.length > 1) {
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(57, 255, 20, 0.6)';
+                ctx.strokeStyle = 'rgba(57, 255, 20, 0.5)';
                 ctx.lineWidth = 4;
                 ctx.moveTo(trail[0].x, trail[0].y);
                 for (let i = 1; i < trail.length; i++) {
@@ -174,28 +149,22 @@
                 ctx.stroke();
             }
 
-            // B. Draw The "Lock" Box (Hawk-Eye Style)
+            // Draw Professional Box
             ctx.strokeStyle = '#39ff14';
             ctx.lineWidth = 3;
-            ctx.strokeRect(x - w/2, y - h/2, w, h); // Dynamic bounding box
-
-            // C. Crosshair
+            ctx.strokeRect(x - w/2, y - h/2, w, h);
+            
+            // Draw Center Cross
             ctx.beginPath();
-            ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y);
             ctx.moveTo(x, y - 10); ctx.lineTo(x, y + 10);
-            ctx.lineWidth = 2;
+            ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y);
             ctx.stroke();
-
-            // D. Label
-            ctx.fillStyle = '#39ff14';
-            ctx.font = 'bold 14px monospace';
-            ctx.fillText(`BALL ${score}%`, x - w/2, y - h/2 - 8);
         }
 
         function drawTrailOnly() {
             if (trail.length > 1) {
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(57, 255, 20, 0.3)'; // Dimmer trail
+                ctx.strokeStyle = 'rgba(57, 255, 20, 0.2)';
                 ctx.lineWidth = 4;
                 ctx.moveTo(trail[0].x, trail[0].y);
                 for (let i = 1; i < trail.length; i++) {
@@ -205,9 +174,7 @@
             }
         }
 
-        // Start System
         setupCamera().then(loadModel);
-
     </script>
 </body>
 </html>
