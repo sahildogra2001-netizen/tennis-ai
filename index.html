@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tennis Ball Tracker - Ultra Refined</title>
+    <title>Hawk-Eye Tennis Ball Tracker</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -42,49 +42,57 @@
             top: 15px; 
             left: 15px; 
             z-index: 20;
-            background: rgba(0,0,0,0.9); 
-            padding: 12px 16px; 
-            border-radius: 10px;
-            border-left: 4px solid #39ff14; 
+            background: rgba(0,0,0,0.95); 
+            padding: 14px 18px; 
+            border-radius: 12px;
+            border-left: 4px solid #00ff41; 
             pointer-events: none;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-            max-width: 320px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.8);
+            max-width: 340px;
+            font-weight: 500;
         }
         .status { 
-            color: #39ff14; 
+            color: #00ff41; 
             font-weight: 700; 
-            font-size: 13px; 
-            margin-bottom: 6px;
+            font-size: 14px; 
+            margin-bottom: 8px;
             letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
         .instruction { 
             color: #fff; 
             font-size: 11px; 
-            line-height: 1.4;
-            opacity: 0.9;
+            line-height: 1.5;
+            opacity: 0.95;
         }
         .stats {
             color: #888;
             font-size: 10px;
-            margin-top: 8px;
+            margin-top: 10px;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 4px;
+            gap: 6px;
         }
         .stat-item {
             display: flex;
             justify-content: space-between;
+            padding: 3px 0;
         }
         .stat-value {
-            color: #39ff14;
-            font-weight: 600;
+            color: #00ff41;
+            font-weight: 700;
         }
         .detection-info {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #333;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #222;
             color: #666;
             font-size: 9px;
+            line-height: 1.4;
+        }
+        .color-match {
+            color: #ffeb3b;
+            font-weight: 600;
         }
         
         .controls {
@@ -119,12 +127,12 @@
             border-color: #ff4757; 
         }
         .btn-settings {
-            background: rgba(108, 92, 231, 0.9);
-            border-color: #6c5ce7;
+            background: rgba(0, 176, 255, 0.9);
+            border-color: #00b0ff;
         }
         .btn-review {
-            background: rgba(255, 184, 0, 0.9);
-            border-color: #ffb800;
+            background: rgba(255, 193, 7, 0.9);
+            border-color: #ffc107;
         }
 
         #settings-panel {
@@ -132,75 +140,80 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 25px;
-            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.98);
+            padding: 28px;
+            border-radius: 16px;
             z-index: 200;
             display: none;
-            max-width: 380px;
-            width: 90%;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
-            max-height: 85vh;
+            max-width: 420px;
+            width: 92%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.95);
+            max-height: 88vh;
             overflow-y: auto;
+            border: 1px solid #333;
         }
         #settings-panel.active {
             display: block;
         }
         .settings-header {
             color: #fff;
-            font-size: 18px;
+            font-size: 19px;
             font-weight: 700;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #39ff14;
-            padding-bottom: 10px;
+            margin-bottom: 22px;
+            border-bottom: 2px solid #00ff41;
+            padding-bottom: 12px;
         }
         .setting-group {
-            margin-bottom: 18px;
+            margin-bottom: 20px;
         }
         .setting-label {
-            color: #aaa;
+            color: #bbb;
             font-size: 12px;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
+            font-weight: 600;
         }
         .setting-value {
-            color: #39ff14;
-            font-weight: 600;
+            color: #00ff41;
+            font-weight: 700;
         }
         .setting-description {
             color: #666;
             font-size: 10px;
-            margin-top: 4px;
+            margin-top: 5px;
             font-style: italic;
+            line-height: 1.3;
         }
         input[type="range"] {
             width: 100%;
-            height: 6px;
+            height: 7px;
             border-radius: 5px;
-            background: #333;
+            background: #2a2a2a;
             outline: none;
             -webkit-appearance: none;
         }
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background: #39ff14;
+            background: #00ff41;
             cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
         }
         .close-settings {
             margin-top: 20px;
             width: 100%;
-            padding: 12px;
-            background: #39ff14;
+            padding: 13px;
+            background: #00ff41;
             color: #000;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 700;
             cursor: pointer;
+            font-size: 14px;
         }
 
         #bounce-counter {
@@ -208,25 +221,27 @@
             top: 15px;
             right: 15px;
             z-index: 20;
-            background: rgba(0,0,0,0.9);
-            padding: 12px 20px;
-            border-radius: 10px;
-            border-right: 4px solid #FFFF00;
+            background: rgba(0,0,0,0.95);
+            padding: 14px 22px;
+            border-radius: 12px;
+            border-right: 4px solid #ffeb3b;
             pointer-events: none;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.8);
         }
         .bounce-count {
-            color: #FFFF00;
-            font-size: 28px;
+            color: #ffeb3b;
+            font-size: 32px;
             font-weight: 700;
             text-align: center;
+            text-shadow: 0 2px 8px rgba(255,235,59,0.3);
         }
         .bounce-label {
             color: #888;
             font-size: 10px;
             text-align: center;
-            margin-top: 2px;
-            letter-spacing: 1px;
+            margin-top: 4px;
+            letter-spacing: 1.5px;
+            font-weight: 600;
         }
 
         #review-panel {
@@ -234,85 +249,90 @@
             bottom: 100px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.95);
-            padding: 20px;
-            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.98);
+            padding: 22px;
+            border-radius: 16px;
             z-index: 150;
             display: none;
-            max-width: 90%;
-            width: 400px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.9);
-            max-height: 60vh;
+            max-width: 92%;
+            width: 420px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.95);
+            max-height: 65vh;
             overflow-y: auto;
+            border: 1px solid #333;
         }
         #review-panel.active {
             display: block;
         }
         .review-header {
-            color: #ffb800;
-            font-size: 16px;
+            color: #ffc107;
+            font-size: 17px;
             font-weight: 700;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #ffb800;
-            padding-bottom: 8px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #ffc107;
+            padding-bottom: 10px;
         }
         .bounce-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 12px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            border-left: 3px solid #FFFF00;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 13px;
+            margin-bottom: 11px;
+            border-radius: 10px;
+            border-left: 3px solid #ffeb3b;
             cursor: pointer;
             transition: all 0.2s;
         }
         .bounce-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateX(6px);
         }
         .bounce-number {
-            color: #FFFF00;
+            color: #ffeb3b;
             font-weight: 700;
             font-size: 14px;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
         }
         .bounce-details {
             color: #aaa;
             font-size: 11px;
+            line-height: 1.5;
         }
         .close-review {
-            margin-top: 15px;
+            margin-top: 16px;
             width: 100%;
-            padding: 10px;
-            background: #ffb800;
+            padding: 11px;
+            background: #ffc107;
             color: #000;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 700;
             cursor: pointer;
+            font-size: 14px;
         }
 
         @keyframes bounceImpact {
             0% { transform: scale(0); opacity: 1; }
-            50% { transform: scale(1.2); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 0.9; }
             100% { transform: scale(1); opacity: 1; }
         }
         .new-bounce {
-            animation: bounceImpact 0.3s ease-out;
+            animation: bounceImpact 0.35s cubic-bezier(0.68, -0.55, 0.265, 1.55);
         }
 
-        .auto-track-indicator {
+        .hawkeye-indicator {
             position: absolute;
             top: 80px;
             left: 15px;
-            background: rgba(57, 255, 20, 0.2);
-            color: #39ff14;
-            padding: 8px 12px;
-            border-radius: 8px;
+            background: rgba(0, 255, 65, 0.15);
+            color: #00ff41;
+            padding: 9px 14px;
+            border-radius: 10px;
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 700;
             z-index: 20;
             pointer-events: none;
-            border: 1px solid #39ff14;
+            border: 1px solid #00ff41;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
         }
     </style>
 </head>
@@ -324,33 +344,33 @@
     </div>
 
     <div class="hud">
-        <div class="status" id="status-text">🎾 STRICT BALL MODE</div>
-        <div class="instruction" id="instruct-text">Scanning for round objects...</div>
+        <div class="status" id="status-text">🎾 HAWK-EYE ACTIVE</div>
+        <div class="instruction" id="instruct-text">Searching for tennis ball (yellow-green)...</div>
         <div class="stats">
             <div class="stat-item">
-                <span>Size:</span>
+                <span>Color Match:</span>
+                <span class="stat-value color-match" id="color-match">0%</span>
+            </div>
+            <div class="stat-item">
+                <span>Ball Size:</span>
                 <span class="stat-value" id="size-level">0</span>
             </div>
             <div class="stat-item">
-                <span>Round:</span>
+                <span>Roundness:</span>
                 <span class="stat-value" id="shape-score">0.0</span>
             </div>
             <div class="stat-item">
                 <span>Speed:</span>
                 <span class="stat-value" id="speed-display">0</span>
             </div>
-            <div class="stat-item">
-                <span>VelY:</span>
-                <span class="stat-value" id="velocity-display">0</span>
-            </div>
         </div>
         <div class="detection-info" id="detection-info">
-            Candidates: 0 | Filtered: 0
+            Yellow pixels detected: 0
         </div>
     </div>
 
-    <div class="auto-track-indicator">
-        ✓ Ultra-Strict Filtering
+    <div class="hawkeye-indicator">
+        ⚡ COLOR TRACKING MODE
     </div>
 
     <div id="bounce-counter">
@@ -360,87 +380,107 @@
 
     <div class="controls">
         <button class="btn btn-settings" id="settings-btn">⚙️ SETTINGS</button>
-        <button class="btn btn-review" id="review-btn">📋 REVIEW</button>
+        <button class="btn btn-review" id="review-btn">📊 REVIEW</button>
         <button class="btn btn-clear" id="clear-btn">✖ CLEAR</button>
     </div>
 
     <div id="settings-panel">
-        <div class="settings-header">🎾 Ultra-Strict Ball Detection</div>
+        <div class="settings-header">⚙️ Hawk-Eye Color Detection</div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Motion Threshold</span>
-                <span class="setting-value" id="motion-val">30</span>
+                <span>Hue Min (Yellow-Green)</span>
+                <span class="setting-value" id="hue-min-val">20</span>
             </div>
-            <input type="range" id="motion-range" min="20" max="80" value="30">
-            <div class="setting-description">Higher = only fast motion detected</div>
+            <input type="range" id="hue-min-range" min="15" max="40" value="20">
+            <div class="setting-description">Tennis balls: 20-35° (yellow-green hue)</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Min Ball Size</span>
-                <span class="setting-value" id="min-size-val">100</span>
+                <span>Hue Max (Yellow-Green)</span>
+                <span class="setting-value" id="hue-max-val">35</span>
             </div>
-            <input type="range" id="min-size-range" min="50" max="300" value="100">
-            <div class="setting-description">Tennis ball should be 100-400 pixels</div>
+            <input type="range" id="hue-max-range" min="30" max="50" value="35">
+            <div class="setting-description">Upper bound for tennis ball yellow</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Max Ball Size</span>
-                <span class="setting-value" id="max-size-val">400</span>
+                <span>Saturation Min (%)</span>
+                <span class="setting-value" id="sat-min-val">40</span>
             </div>
-            <input type="range" id="max-size-range" min="200" max="1000" value="400">
-            <div class="setting-description">Blocks hands/keyboards (>400px)</div>
+            <input type="range" id="sat-min-range" min="20" max="80" value="40">
+            <div class="setting-description">Vibrant colors only (filters grays)</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Min Roundness (STRICT)</span>
-                <span class="setting-value" id="roundness-val">0.75</span>
+                <span>Brightness Min (%)</span>
+                <span class="setting-value" id="val-min-val">30</span>
             </div>
-            <input type="range" id="roundness-range" min="0.5" max="0.95" value="0.75" step="0.05">
-            <div class="setting-description">0.75+ = very round (circles only)</div>
+            <input type="range" id="val-min-range" min="20" max="80" value="30">
+            <div class="setting-description">Minimum brightness for visibility</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Min Compactness</span>
-                <span class="setting-value" id="compact-val">0.50</span>
+                <span>Min Ball Size (px)</span>
+                <span class="setting-value" id="min-size-val">80</span>
             </div>
-            <input type="range" id="compact-range" min="0.3" max="0.8" value="0.50" step="0.05">
-            <div class="setting-description">Circle ≈ 0.78, irregular shapes lower</div>
+            <input type="range" id="min-size-range" min="40" max="200" value="80">
+            <div class="setting-description">Minimum yellow blob area</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Max Ball Size (px)</span>
+                <span class="setting-value" id="max-size-val">600</span>
+            </div>
+            <input type="range" id="max-size-range" min="300" max="1500" value="600">
+            <div class="setting-description">Maximum yellow blob area</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Min Roundness</span>
+                <span class="setting-value" id="roundness-val">0.65</span>
+            </div>
+            <input type="range" id="roundness-range" min="0.50" max="0.95" value="0.65" step="0.05">
+            <div class="setting-description">Shape filter (1.0 = perfect circle)</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Bounce Sensitivity</span>
-                <span class="setting-value" id="bounce-val">5</span>
+                <span class="setting-value" id="bounce-val">4</span>
             </div>
-            <input type="range" id="bounce-range" min="3" max="15" value="5" step="1">
+            <input type="range" id="bounce-range" min="2" max="12" value="4" step="1">
+            <div class="setting-description">Velocity reversal threshold</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Bounce Cooldown (ms)</span>
-                <span class="setting-value" id="cooldown-val">500</span>
+                <span class="setting-value" id="cooldown-val">400</span>
             </div>
-            <input type="range" id="cooldown-range" min="200" max="1000" value="500" step="50">
+            <input type="range" id="cooldown-range" min="150" max="800" value="400" step="50">
+            <div class="setting-description">Minimum time between bounces</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
                 <span>Trail Length</span>
-                <span class="setting-value" id="trail-val">15</span>
+                <span class="setting-value" id="trail-val">18</span>
             </div>
-            <input type="range" id="trail-range" min="5" max="50" value="15">
+            <input type="range" id="trail-range" min="5" max="40" value="18">
         </div>
         
         <button class="close-settings" id="close-settings">CLOSE</button>
     </div>
 
     <div id="review-panel">
-        <div class="review-header">Bounce Review</div>
+        <div class="review-header">📊 Bounce Analysis</div>
         <div id="bounce-list"></div>
         <button class="close-review" id="close-review">CLOSE</button>
     </div>
@@ -451,10 +491,10 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const statusText = document.getElementById('status-text');
         const instructText = document.getElementById('instruct-text');
+        const colorMatchEl = document.getElementById('color-match');
         const sizeLevelEl = document.getElementById('size-level');
         const shapeScoreEl = document.getElementById('shape-score');
         const speedDisplay = document.getElementById('speed-display');
-        const velocityDisplay = document.getElementById('velocity-display');
         const detectionInfo = document.getElementById('detection-info');
         const bounceCountDisplay = document.getElementById('bounce-count');
         const settingsPanel = document.getElementById('settings-panel');
@@ -467,25 +507,28 @@
         let lastPos = null;
         let velocity = { x: 0, y: 0 };
         let lastBounceTime = 0;
-        let maxTrailLength = 15;
-        let bounceThreshold = 5;
-        let bounceCooldown = 500;
+        let maxTrailLength = 18;
+        let bounceThreshold = 4;
+        let bounceCooldown = 400;
         
-        // ULTRA-STRICT PARAMETERS
-        let motionThreshold = 30;      // Higher = only significant motion
-        let minBallSize = 100;          // Tennis ball minimum
-        let maxBallSize = 400;          // Tennis ball maximum
-        let minRoundness = 0.75;        // Must be very round
-        let minCompactness = 0.50;      // Must be blob-like (circle ≈ 0.78)
-        let previousFrame = null;
+        // COLOR DETECTION PARAMETERS (HSV)
+        let hueMin = 20;        // Yellow-green lower bound
+        let hueMax = 35;        // Yellow-green upper bound
+        let satMin = 40;        // Minimum saturation (0-100)
+        let valMin = 30;        // Minimum brightness (0-100)
+        
+        // SHAPE FILTERS
+        let minBallSize = 80;
+        let maxBallSize = 600;
+        let minRoundness = 0.65;
 
         async function setupCamera() {
             try {
                 const constraints = {
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 };
@@ -508,37 +551,30 @@
                     requestAnimationFrame(processFrame);
                 };
             } catch (e) {
-                alert("Camera Error: " + e.message);
+                alert("Camera Error: " + e.message + "\n\nPlease allow camera access.");
             }
         }
 
         function processFrame() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            const currentFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
             
-            if (!previousFrame) {
-                previousFrame = currentFrame;
-                requestAnimationFrame(processFrame);
-                return;
-            }
-
-            const motionMap = detectMotion(previousFrame, currentFrame);
-            previousFrame = currentFrame;
+            // COLOR DETECTION: Find yellow-green pixels (tennis ball)
+            const colorMask = detectTennisBallColor(frame);
             
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             drawBounces();
             
-            const result = findBall(motionMap);
-            const ball = result.ball;
-            detectionInfo.innerText = `Candidates: ${result.totalCandidates} | Passed filters: ${result.passedFilters}`;
+            const ball = findTennisBall(colorMask);
             
             if (ball) {
-                const { centerX, centerY, bottomY, size, roundness, compactness } = ball;
+                const { centerX, centerY, bottomY, size, roundness, colorMatch } = ball;
                 
                 sizeLevelEl.innerText = Math.round(size);
                 shapeScoreEl.innerText = roundness.toFixed(2);
-                instructText.innerText = `Ball locked ✓ (compact: ${compactness.toFixed(2)})`;
+                colorMatchEl.innerText = colorMatch + '%';
+                instructText.innerText = "Tennis ball tracked ✓";
                 
                 positionHistory.push({ 
                     x: centerX, 
@@ -553,8 +589,8 @@
                     velocity.y = centerY - lastPos.y;
                     const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
                     speedDisplay.innerText = Math.round(speed);
-                    velocityDisplay.innerText = Math.round(velocity.y);
                     
+                    // BOUNCE DETECTION
                     if (positionHistory.length >= 5) {
                         const recent = positionHistory.slice(-5);
                         let lowestIdx = -1;
@@ -584,7 +620,6 @@
                     }
                 } else {
                     speedDisplay.innerText = '0';
-                    velocityDisplay.innerText = '0';
                 }
                 
                 lastPos = { x: centerX, y: centerY, bottomY: bottomY };
@@ -599,40 +634,77 @@
                 }
                 sizeLevelEl.innerText = '0';
                 shapeScoreEl.innerText = '0.0';
+                colorMatchEl.innerText = '0%';
                 speedDisplay.innerText = '0';
-                velocityDisplay.innerText = '0';
-                instructText.innerText = "Scanning for round objects...";
+                instructText.innerText = "Searching for tennis ball (yellow-green)...";
             }
 
             drawTrail();
             requestAnimationFrame(processFrame);
         }
 
-        function detectMotion(prevFrame, currFrame) {
-            const prev = prevFrame.data;
-            const curr = currFrame.data;
+        // RGB to HSV conversion
+        function rgbToHsv(r, g, b) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+            
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const delta = max - min;
+            
+            let h = 0;
+            if (delta !== 0) {
+                if (max === r) {
+                    h = ((g - b) / delta) % 6;
+                } else if (max === g) {
+                    h = (b - r) / delta + 2;
+                } else {
+                    h = (r - g) / delta + 4;
+                }
+                h = Math.round(h * 60);
+                if (h < 0) h += 360;
+            }
+            
+            const s = max === 0 ? 0 : Math.round((delta / max) * 100);
+            const v = Math.round(max * 100);
+            
+            return { h, s, v };
+        }
+
+        // Detect tennis ball yellow-green color
+        function detectTennisBallColor(frame) {
+            const data = frame.data;
             const width = canvas.width;
             const height = canvas.height;
+            const colorMask = new Uint8ClampedArray(width * height);
             
-            const motionMap = new Uint8ClampedArray(width * height);
+            let yellowPixelCount = 0;
             
-            const stride = 4;
+            // Scan with stride for performance
+            const stride = 2;
             for (let y = 0; y < height; y += stride) {
                 for (let x = 0; x < width; x += stride) {
                     const i = (y * width + x) * 4;
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
                     
-                    const dr = Math.abs(curr[i] - prev[i]);
-                    const dg = Math.abs(curr[i + 1] - prev[i + 1]);
-                    const db = Math.abs(curr[i + 2] - prev[i + 2]);
-                    const diff = (dr + dg + db) / 3;
+                    const hsv = rgbToHsv(r, g, b);
                     
-                    if (diff > motionThreshold) {
+                    // Check if pixel is tennis ball yellow-green
+                    if (hsv.h >= hueMin && hsv.h <= hueMax &&
+                        hsv.s >= satMin && hsv.v >= valMin) {
+                        
+                        yellowPixelCount++;
+                        
+                        // Fill in stride area
                         for (let dy = 0; dy < stride; dy++) {
                             for (let dx = 0; dx < stride; dx++) {
                                 const nx = x + dx;
                                 const ny = y + dy;
                                 if (nx < width && ny < height) {
-                                    motionMap[ny * width + nx] = 255;
+                                    colorMask[ny * width + nx] = 255;
                                 }
                             }
                         }
@@ -640,64 +712,60 @@
                 }
             }
             
-            return motionMap;
+            detectionInfo.innerText = `Yellow pixels detected: ${yellowPixelCount}`;
+            
+            return colorMask;
         }
 
-        function findBall(motionMap) {
+        function findTennisBall(colorMask) {
             const width = canvas.width;
             const height = canvas.height;
-            
             const visited = new Uint8ClampedArray(width * height);
+            
             let bestBall = null;
             let bestScore = 0;
-            let totalCandidates = 0;
-            let passedFilters = 0;
 
             for (let y = 0; y < height; y += 3) {
                 for (let x = 0; x < width; x += 3) {
                     const idx = y * width + x;
                     
-                    if (motionMap[idx] > 0 && !visited[idx]) {
-                        const blob = floodFill(motionMap, visited, x, y, width, height);
+                    if (colorMask[idx] > 0 && !visited[idx]) {
+                        const blob = floodFill(colorMask, visited, x, y, width, height);
                         
                         if (!blob) continue;
-                        totalCandidates++;
 
-                        // FILTER 1: SIZE (strict range)
+                        // SIZE FILTER
                         if (blob.size < minBallSize || blob.size > maxBallSize) continue;
 
-                        // FILTER 2: ASPECT RATIO (roundness)
+                        // ROUNDNESS FILTER
                         const blobWidth = blob.bounds.maxX - blob.bounds.minX;
                         const blobHeight = blob.bounds.maxY - blob.bounds.minY;
                         const aspectRatio = Math.min(blobWidth, blobHeight) / Math.max(blobWidth, blobHeight);
                         
                         if (aspectRatio < minRoundness) continue;
 
-                        // FILTER 3: COMPACTNESS (how circle-like)
+                        // COMPACTNESS
                         const boundingBoxArea = blobWidth * blobHeight;
                         const compactness = blob.size / boundingBoxArea;
                         
-                        if (compactness < minCompactness) continue;
+                        if (compactness < 0.45) continue;
 
-                        passedFilters++;
-
-                        // SCORING: Maximize roundness + compactness
                         const score = aspectRatio * compactness * blob.size;
                         
                         if (score > bestScore) {
                             bestScore = score;
                             blob.roundness = aspectRatio;
-                            blob.compactness = compactness;
+                            blob.colorMatch = Math.round((blob.size / maxBallSize) * 100);
                             bestBall = blob;
                         }
                     }
                 }
             }
             
-            return { ball: bestBall, totalCandidates, passedFilters };
+            return bestBall;
         }
 
-        function floodFill(motionMap, visited, startX, startY, width, height) {
+        function floodFill(colorMask, visited, startX, startY, width, height) {
             const stack = [[startX, startY]];
             let minX = startX, maxX = startX;
             let minY = startY, maxY = startY;
@@ -708,7 +776,7 @@
                 const idx = y * width + x;
                 
                 if (x < 0 || x >= width || y < 0 || y >= height) continue;
-                if (visited[idx] || motionMap[idx] === 0) continue;
+                if (visited[idx] || colorMask[idx] === 0) continue;
                 
                 visited[idx] = 1;
                 sumX += x;
@@ -720,7 +788,6 @@
                 minY = Math.min(minY, y);
                 maxY = Math.max(maxY, y);
                 
-                // Prevent runaway growth for huge blobs
                 if (count > maxBallSize * 2) break;
                 
                 stack.push([x + 1, y]);
@@ -742,14 +809,14 @@
 
         function drawBounces() {
             bounces.forEach((b, idx) => {
-                const size = 22;
+                const size = 24;
                 const age = Date.now() - b.timestamp;
-                const fadeAlpha = Math.max(0.3, 1 - (age / 10000));
+                const fadeAlpha = Math.max(0.4, 1 - (age / 12000));
                 
                 ctx.save();
-                ctx.shadowColor = `rgba(255, 255, 0, ${fadeAlpha})`;
-                ctx.shadowBlur = 15;
-                ctx.strokeStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
+                ctx.shadowColor = `rgba(255, 235, 59, ${fadeAlpha})`;
+                ctx.shadowBlur = 18;
+                ctx.strokeStyle = `rgba(255, 235, 59, ${fadeAlpha})`;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
                 ctx.beginPath();
@@ -759,38 +826,38 @@
                 ctx.lineTo(b.x - size, b.y + size);
                 ctx.stroke();
                 ctx.beginPath();
-                ctx.arc(b.x, b.y, size + 5, 0, Math.PI * 2);
+                ctx.arc(b.x, b.y, size + 6, 0, Math.PI * 2);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
-                ctx.font = "bold 16px sans-serif";
+                ctx.fillStyle = `rgba(255, 235, 59, ${fadeAlpha})`;
+                ctx.font = "bold 17px sans-serif";
                 ctx.textAlign = "center";
-                ctx.fillText((idx + 1).toString(), b.x, b.y - size - 12);
+                ctx.fillText((idx + 1).toString(), b.x, b.y - size - 14);
                 ctx.restore();
             });
         }
 
         function drawTracker(x, y, r, roundness) {
             ctx.save();
-            const intensity = Math.min(1, roundness / 0.8);
-            ctx.strokeStyle = `rgba(57, 255, 20, ${intensity})`;
-            ctx.shadowColor = "#39ff14";
-            ctx.shadowBlur = 12;
+            const intensity = Math.min(1, roundness / 0.75);
+            ctx.strokeStyle = `rgba(0, 255, 65, ${intensity})`;
+            ctx.shadowColor = "#00ff41";
+            ctx.shadowBlur = 15;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.stroke();
-            const cross = r + 12;
+            const cross = r + 14;
             ctx.beginPath();
             ctx.moveTo(x - cross, y);
             ctx.lineTo(x + cross, y);
             ctx.moveTo(x, y - cross);
             ctx.lineTo(x, y + cross);
             ctx.stroke();
-            ctx.fillStyle = `rgba(57, 255, 20, ${intensity})`;
+            ctx.fillStyle = `rgba(0, 255, 65, ${intensity})`;
             ctx.beginPath();
-            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
         }
@@ -803,7 +870,7 @@
             ctx.lineJoin = 'round';
             for (let i = 1; i < trail.length; i++) {
                 const alpha = i / trail.length;
-                ctx.strokeStyle = `rgba(57, 255, 20, ${alpha * 0.8})`;
+                ctx.strokeStyle = `rgba(0, 255, 65, ${alpha * 0.75})`;
                 ctx.beginPath();
                 ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
                 ctx.lineTo(trail[i].x, trail[i].y);
@@ -828,14 +895,14 @@
             });
             bounceCountDisplay.innerText = bounces.length;
             bounceCountDisplay.classList.add('new-bounce');
-            setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 300);
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 350);
+            if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
         }
 
         function updateReviewPanel() {
             bounceList.innerHTML = '';
             if (bounces.length === 0) {
-                bounceList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No bounces recorded yet</p>';
+                bounceList.innerHTML = '<p style="color: #888; text-align: center; padding: 22px; font-size: 12px;">No bounces recorded yet</p>';
                 return;
             }
             bounces.forEach((bounce, idx) => {
@@ -855,27 +922,27 @@
         }
 
         function highlightBounce(bounce) {
-            let highlightFrames = 30;
+            let highlightFrames = 35;
             const highlightInterval = setInterval(() => {
                 if (highlightFrames-- <= 0) {
                     clearInterval(highlightInterval);
                     return;
                 }
                 ctx.save();
-                const pulseScale = 1 + Math.sin(highlightFrames * 0.3) * 0.3;
-                ctx.strokeStyle = "#FF00FF";
-                ctx.lineWidth = 6;
-                ctx.shadowColor = "#FF00FF";
-                ctx.shadowBlur = 20;
+                const pulseScale = 1 + Math.sin(highlightFrames * 0.32) * 0.35;
+                ctx.strokeStyle = "#00f5ff";
+                ctx.lineWidth = 7;
+                ctx.shadowColor = "#00f5ff";
+                ctx.shadowBlur = 25;
                 ctx.beginPath();
-                ctx.arc(bounce.x, bounce.y, 40 * pulseScale, 0, Math.PI * 2);
+                ctx.arc(bounce.x, bounce.y, 45 * pulseScale, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.restore();
             }, 50);
         }
 
         document.getElementById('clear-btn').addEventListener('click', () => {
-            if (confirm('Clear all bounces?')) {
+            if (confirm('Clear all bounces? This cannot be undone.')) {
                 bounces = [];
                 trail = [];
                 bounceCountDisplay.innerText = '0';
@@ -902,9 +969,25 @@
             reviewPanel.classList.remove('active');
         });
 
-        document.getElementById('motion-range').addEventListener('input', (e) => {
-            motionThreshold = parseInt(e.target.value);
-            document.getElementById('motion-val').innerText = motionThreshold;
+        // Settings event listeners
+        document.getElementById('hue-min-range').addEventListener('input', (e) => {
+            hueMin = parseInt(e.target.value);
+            document.getElementById('hue-min-val').innerText = hueMin;
+        });
+
+        document.getElementById('hue-max-range').addEventListener('input', (e) => {
+            hueMax = parseInt(e.target.value);
+            document.getElementById('hue-max-val').innerText = hueMax;
+        });
+
+        document.getElementById('sat-min-range').addEventListener('input', (e) => {
+            satMin = parseInt(e.target.value);
+            document.getElementById('sat-min-val').innerText = satMin;
+        });
+
+        document.getElementById('val-min-range').addEventListener('input', (e) => {
+            valMin = parseInt(e.target.value);
+            document.getElementById('val-min-val').innerText = valMin;
         });
 
         document.getElementById('min-size-range').addEventListener('input', (e) => {
@@ -920,11 +1003,6 @@
         document.getElementById('roundness-range').addEventListener('input', (e) => {
             minRoundness = parseFloat(e.target.value);
             document.getElementById('roundness-val').innerText = minRoundness.toFixed(2);
-        });
-
-        document.getElementById('compact-range').addEventListener('input', (e) => {
-            minCompactness = parseFloat(e.target.value);
-            document.getElementById('compact-val').innerText = minCompactness.toFixed(2);
         });
 
         document.getElementById('bounce-range').addEventListener('input', (e) => {
