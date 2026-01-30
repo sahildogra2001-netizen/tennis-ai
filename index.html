@@ -137,6 +137,8 @@
             max-width: 350px;
             width: 90%;
             box-shadow: 0 8px 32px rgba(0,0,0,0.9);
+            max-height: 80vh;
+            overflow-y: auto;
         }
         #settings-panel.active {
             display: block;
@@ -190,6 +192,12 @@
             border-radius: 8px;
             font-weight: 700;
             cursor: pointer;
+        }
+        .setting-note {
+            color: #666;
+            font-size: 10px;
+            margin-top: 4px;
+            font-style: italic;
         }
 
         /* Bounce Counter */
@@ -321,8 +329,8 @@
         <div class="instruction" id="instruct-text">Tracking fastest moving object automatically</div>
         <div class="stats">
             <div class="stat-item">
-                <span>Motion:</span>
-                <span class="stat-value" id="motion-level">0</span>
+                <span>Objects:</span>
+                <span class="stat-value" id="object-count">0</span>
             </div>
             <div class="stat-item">
                 <span>FPS:</span>
@@ -360,17 +368,38 @@
         <div class="setting-group">
             <div class="setting-label">
                 <span>Motion Threshold</span>
-                <span class="setting-value" id="motion-val">20</span>
+                <span class="setting-value" id="motion-val">25</span>
             </div>
-            <input type="range" id="motion-range" min="10" max="50" value="20">
+            <input type="range" id="motion-range" min="15" max="60" value="25">
+            <div class="setting-note">Pixel difference to detect motion</div>
         </div>
         
         <div class="setting-group">
             <div class="setting-label">
-                <span>Min Object Size (pixels)</span>
-                <span class="setting-value" id="size-val">50</span>
+                <span>Min Speed (px/frame)</span>
+                <span class="setting-value" id="speed-val">5</span>
             </div>
-            <input type="range" id="size-range" min="20" max="200" value="50">
+            <input type="range" id="speed-range" min="2" max="20" value="5">
+            <div class="setting-note">Minimum speed to track (filters static objects)</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Object Size Range</span>
+                <span class="setting-value" id="size-val">30-500</span>
+            </div>
+            <input type="range" id="min-size-range" min="20" max="100" value="30">
+            <input type="range" id="max-size-range" min="200" max="2000" value="500" step="50">
+            <div class="setting-note">Min-Max object size in pixels</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="setting-label">
+                <span>Tracking Consistency</span>
+                <span class="setting-value" id="consistency-val">3</span>
+            </div>
+            <input type="range" id="consistency-range" min="2" max="8" value="3">
+            <div class="setting-note">Frames required to confirm tracking</div>
         </div>
         
         <div class="setting-group">
@@ -379,6 +408,7 @@
                 <span class="setting-value" id="bounce-val">6</span>
             </div>
             <input type="range" id="bounce-range" min="3" max="15" value="6" step="1">
+            <div class="setting-note">Velocity change threshold</div>
         </div>
         
         <div class="setting-group">
@@ -413,7 +443,7 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const statusText = document.getElementById('status-text');
         const instructText = document.getElementById('instruct-text');
-        const motionLevel = document.getElementById('motion-level');
+        const objectCount = document.getElementById('object-count');
         const fpsCount = document.getElementById('fps-count');
         const speedDisplay = document.getElementById('speed-display');
         const velocityDisplay = document.getElementById('velocity-display');
@@ -426,6 +456,8 @@
         let bounces = [];
         let trail = [];
         let positionHistory = [];
+        let trackedObject = null; // Currently tracked object
+        let candidateObjects = []; // Objects being considered for tracking
         let lastPos = null;
         let velocity = { x: 0, y: 0 };
         let lastBounceTime = 0;
@@ -434,8 +466,11 @@
         let bounceCooldown = 600;
         
         // Motion detection parameters
-        let motionThreshold = 20;
-        let minObjectSize = 50;
+        let motionThreshold = 25;
+        let minSpeed = 5; // Minimum speed in pixels per frame
+        let minObjectSize = 30;
+        let maxObjectSize = 500;
+        let consistencyFrames = 3; // Frames needed to confirm tracking
         let previousFrame = null;
 
         // --- PERFORMANCE TRACKING ---
@@ -491,8 +526,8 @@
                 return;
             }
 
-            // MOTION DETECTION: Find areas with significant change
-            const motionData = detectMotion(previousFrame, currentFrame);
+            // MOTION DETECTION: Find moving objects
+            const movingObjects = detectMovingObjects(previousFrame, currentFrame);
             
             // Store current frame for next comparison
             previousFrame = currentFrame;
@@ -503,13 +538,15 @@
             // Draw bounce marks
             drawBounces();
             
-            // Find the largest moving object (likely the ball)
-            const movingObject = findLargestMovingObject(motionData);
+            objectCount.innerText = movingObjects.length;
             
-            if (movingObject) {
-                const { centerX, centerY, bottomY, size, motion } = movingObject;
+            // Track the best candidate (fastest, most consistent)
+            const bestObject = selectBestTrackingCandidate(movingObjects);
+            
+            if (bestObject) {
+                const { centerX, centerY, bottomY, speed } = bestObject;
                 
-                motionLevel.innerText = Math.round(motion);
+                speedDisplay.innerText = Math.round(speed);
                 
                 // Store position history
                 positionHistory.push({ 
@@ -526,8 +563,6 @@
                 if (lastPos) {
                     velocity.x = centerX - lastPos.x;
                     velocity.y = centerY - lastPos.y;
-                    const speed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
-                    speedDisplay.innerText = Math.round(speed);
                     velocityDisplay.innerText = Math.round(velocity.y);
                     
                     // BOUNCE DETECTION
@@ -562,7 +597,6 @@
                         }
                     }
                 } else {
-                    speedDisplay.innerText = '0';
                     velocityDisplay.innerText = '0';
                 }
                 
@@ -570,16 +604,14 @@
                 updateTrail(centerX, centerY);
                 
                 // Draw tracker
-                const radius = Math.sqrt(size / Math.PI);
-                drawTracker(centerX, centerY, radius, motion);
+                const radius = Math.sqrt(bestObject.size / Math.PI);
+                drawTracker(centerX, centerY, radius, speed);
             } else {
                 // No object detected
                 if (positionHistory.length > 0) {
-                    // Gradually clear history
                     positionHistory = [];
                     lastPos = null;
                 }
-                motionLevel.innerText = '0';
                 speedDisplay.innerText = '0';
                 velocityDisplay.innerText = '0';
             }
@@ -593,8 +625,8 @@
             requestAnimationFrame(processFrame);
         }
 
-        // --- MOTION DETECTION ---
-        function detectMotion(prevFrame, currFrame) {
+        // --- MOTION DETECTION WITH SPEED CALCULATION ---
+        function detectMovingObjects(prevFrame, currFrame) {
             const prev = prevFrame.data;
             const curr = currFrame.data;
             const width = canvas.width;
@@ -603,8 +635,8 @@
             // Create motion map
             const motionMap = new Uint8ClampedArray(width * height);
             
-            // Compare frames with stride for performance
-            const stride = 4; // Check every 4th pixel
+            // Compare frames with stride
+            const stride = 4;
             for (let y = 0; y < height; y += stride) {
                 for (let x = 0; x < width; x += stride) {
                     const i = (y * width + x) * 4;
@@ -616,7 +648,7 @@
                     const diff = (dr + dg + db) / 3;
                     
                     if (diff > motionThreshold) {
-                        // Mark motion area (expand to nearby pixels)
+                        // Mark motion area
                         for (let dy = 0; dy < stride; dy++) {
                             for (let dx = 0; dx < stride; dx++) {
                                 const nx = x + dx;
@@ -630,18 +662,9 @@
                 }
             }
             
-            return motionMap;
-        }
-
-        // --- FIND MOVING OBJECT ---
-        function findLargestMovingObject(motionMap) {
-            const width = canvas.width;
-            const height = canvas.height;
-            
-            // Find connected components (blob detection)
+            // Find all moving blobs
             const visited = new Uint8ClampedArray(width * height);
-            let largestBlob = null;
-            let maxSize = 0;
+            const objects = [];
             
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
@@ -650,15 +673,98 @@
                     if (motionMap[idx] > 0 && !visited[idx]) {
                         const blob = floodFill(motionMap, visited, x, y, width, height);
                         
-                        if (blob.size > maxSize && blob.size > minObjectSize) {
-                            maxSize = blob.size;
-                            largestBlob = blob;
+                        if (blob && blob.size >= minObjectSize && blob.size <= maxObjectSize) {
+                            // Calculate shape ratio
+                            const width_blob = blob.bounds.maxX - blob.bounds.minX;
+                            const height_blob = blob.bounds.maxY - blob.bounds.minY;
+                            const ratio = height_blob / (width_blob || 1);
+                            
+                            // Accept objects that are roughly circular/compact (0.4 to 2.5 ratio)
+                            if (ratio > 0.4 && ratio < 2.5) {
+                                objects.push(blob);
+                            }
                         }
                     }
                 }
             }
             
-            return largestBlob;
+            return objects;
+        }
+
+        // --- SELECT BEST TRACKING CANDIDATE ---
+        function selectBestTrackingCandidate(objects) {
+            if (objects.length === 0) {
+                trackedObject = null;
+                return null;
+            }
+            
+            // If we're already tracking something, try to find it again
+            if (trackedObject) {
+                // Find closest object to last position
+                let bestMatch = null;
+                let minDist = Infinity;
+                
+                for (const obj of objects) {
+                    const dx = obj.centerX - trackedObject.centerX;
+                    const dy = obj.centerY - trackedObject.centerY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Calculate speed
+                    obj.speed = dist;
+                    
+                    // Only track if object moved (speed filter)
+                    if (dist > minSpeed && dist < 200 && dist < minDist) { // Max 200px jump
+                        minDist = dist;
+                        bestMatch = obj;
+                    }
+                }
+                
+                if (bestMatch) {
+                    trackedObject = bestMatch;
+                    trackedObject.consistencyCount = (trackedObject.consistencyCount || 0) + 1;
+                    return bestMatch;
+                } else {
+                    // Lost tracking
+                    trackedObject = null;
+                }
+            }
+            
+            // No tracked object, find the fastest moving one
+            let fastestObject = null;
+            let maxSpeed = 0;
+            
+            for (const obj of objects) {
+                // Calculate speed if we have history
+                if (lastPos) {
+                    const dx = obj.centerX - lastPos.x;
+                    const dy = obj.centerY - lastPos.y;
+                    obj.speed = Math.sqrt(dx * dx + dy * dy);
+                } else {
+                    obj.speed = 0;
+                }
+                
+                // Only consider objects moving fast enough
+                if (obj.speed >= minSpeed && obj.speed > maxSpeed) {
+                    maxSpeed = obj.speed;
+                    fastestObject = obj;
+                }
+            }
+            
+            // Start tracking if fast enough and need consistency
+            if (fastestObject) {
+                fastestObject.consistencyCount = 1;
+                
+                // Only commit to tracking after consistency check
+                if (fastestObject.consistencyCount >= consistencyFrames) {
+                    trackedObject = fastestObject;
+                    return fastestObject;
+                }
+                
+                // Return for display but don't commit yet
+                return fastestObject;
+            }
+            
+            return null;
         }
 
         // --- FLOOD FILL (Blob Detection) ---
@@ -699,7 +805,7 @@
                 centerY: sumY / count,
                 bottomY: maxY,
                 size: count,
-                motion: count,
+                speed: 0, // Will be calculated later
                 bounds: { minX, maxX, minY, maxY }
             };
         }
@@ -709,15 +815,13 @@
             bounces.forEach((b, idx) => {
                 const size = 22;
                 const age = Date.now() - b.timestamp;
-                const fadeAlpha = Math.max(0.3, 1 - (age / 10000)); // Fade over 10 seconds
+                const fadeAlpha = Math.max(0.3, 1 - (age / 10000));
                 
                 ctx.save();
                 
-                // Glow effect
                 ctx.shadowColor = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.shadowBlur = 15;
                 
-                // Draw X mark
                 ctx.strokeStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
@@ -728,13 +832,11 @@
                 ctx.lineTo(b.x - size, b.y + size);
                 ctx.stroke();
                 
-                // Draw circle
                 ctx.beginPath();
                 ctx.arc(b.x, b.y, size + 5, 0, Math.PI * 2);
                 ctx.lineWidth = 3;
                 ctx.stroke();
                 
-                // Draw bounce number
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = `rgba(255, 255, 0, ${fadeAlpha})`;
                 ctx.font = "bold 16px sans-serif";
@@ -745,11 +847,10 @@
             });
         }
 
-        function drawTracker(x, y, r, motion) {
+        function drawTracker(x, y, r, speed) {
             ctx.save();
             
-            // Motion-based coloring
-            const intensity = Math.min(1, motion / 200);
+            const intensity = Math.min(1, speed / 50);
             ctx.strokeStyle = `rgba(57, 255, 20, ${intensity})`;
             ctx.shadowColor = "#39ff14";
             ctx.shadowBlur = 10;
@@ -759,7 +860,6 @@
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.stroke();
             
-            // Crosshair
             const cross = r + 8;
             ctx.beginPath();
             ctx.moveTo(x - cross, y);
@@ -768,7 +868,6 @@
             ctx.lineTo(x, y + cross);
             ctx.stroke();
             
-            // Center dot
             ctx.fillStyle = `rgba(57, 255, 20, ${intensity})`;
             ctx.beginPath();
             ctx.arc(x, y, 3, 0, Math.PI * 2);
@@ -816,11 +915,9 @@
             });
             bounceCountDisplay.innerText = bounces.length;
             
-            // Visual feedback
             bounceCountDisplay.classList.add('new-bounce');
             setTimeout(() => bounceCountDisplay.classList.remove('new-bounce'), 300);
             
-            // Haptic feedback
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             
             console.log(`Bounce #${bounces.length} at (${Math.round(x)}, ${Math.round(y)}) | Speed: ${Math.round(speed)}`);
@@ -922,9 +1019,28 @@
             document.getElementById('motion-val').innerText = motionThreshold;
         });
 
-        document.getElementById('size-range').addEventListener('input', (e) => {
+        document.getElementById('speed-range').addEventListener('input', (e) => {
+            minSpeed = parseInt(e.target.value);
+            document.getElementById('speed-val').innerText = minSpeed;
+        });
+
+        document.getElementById('min-size-range').addEventListener('input', (e) => {
             minObjectSize = parseInt(e.target.value);
-            document.getElementById('size-val').innerText = minObjectSize;
+            updateSizeDisplay();
+        });
+
+        document.getElementById('max-size-range').addEventListener('input', (e) => {
+            maxObjectSize = parseInt(e.target.value);
+            updateSizeDisplay();
+        });
+
+        function updateSizeDisplay() {
+            document.getElementById('size-val').innerText = `${minObjectSize}-${maxObjectSize}`;
+        }
+
+        document.getElementById('consistency-range').addEventListener('input', (e) => {
+            consistencyFrames = parseInt(e.target.value);
+            document.getElementById('consistency-val').innerText = consistencyFrames;
         });
 
         document.getElementById('bounce-range').addEventListener('input', (e) => {
